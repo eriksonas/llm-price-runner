@@ -16,6 +16,9 @@ Usage:
     python -m tools.run_probes                    # full refresh (all cities × regions)
     python -m tools.run_probes --city vilnius     # single city (debugging)
     python -m tools.run_probes --region eu-central --city vilnius
+    python -m tools.run_probes --target eu-central=storage.googleapis.com
+                                                  # measure Google Cloud's Frankfurt
+                                                  # endpoint instead of AWS
 """
 
 import argparse
@@ -124,7 +127,13 @@ def find_probes_near(client: httpx.Client, city_id: str, city: dict, n: int) -> 
     results = r.json().get("results", [])
 
     def _dist(p):
-        lat, lon = p.get("latitude"), p.get("longitude")
+        # Atlas returns probe coordinates as GeoJSON: geometry.coordinates[lon, lat].
+        # Some older payloads also expose flat latitude/longitude; fall back to those.
+        coords = (p.get("geometry") or {}).get("coordinates") or []
+        if len(coords) >= 2:
+            lon, lat = coords[0], coords[1]
+        else:
+            lat, lon = p.get("latitude"), p.get("longitude")
         if lat is None or lon is None:
             return 1e9
         return _haversine_km(city["lat"], city["lon"], lat, lon)
@@ -161,16 +170,53 @@ def fetch_results(client: httpx.Client, measurement_id: int) -> list[dict]:
     return r.json()
 
 
-def wait_for_results(client: httpx.Client, measurement_id: int, expected: int) -> list[dict]:
-    """Poll until results arrive for all probes or timeout."""
+def poll_all_measurements(
+    client: httpx.Client,
+    measurement_ids: dict[str, int],
+    expected_per_measurement: int,
+) -> dict[str, dict[int, float]]:
+    """Poll every active measurement in round-robin until each completes or
+    the global deadline is reached, then return per-region probe→RTT maps.
+
+    Replaces the previous serial wait — that took up to len(regions) ×
+    POLL_TIMEOUT_S worst case (~40 min for 8 regions). Atlas runs the
+    measurements in parallel on its backend; the only reason to serialize
+    is laziness in the client, so we don't.
+    """
+    pending = dict(measurement_ids)
+    results: dict[str, dict[int, float]] = {}
     deadline = time.time() + POLL_TIMEOUT_S
-    last = []
-    while time.time() < deadline:
-        last = fetch_results(client, measurement_id)
-        if len(last) >= expected:
-            return last
-        time.sleep(POLL_INTERVAL_S)
-    return last  # return whatever we got
+
+    while pending and time.time() < deadline:
+        completed_this_round = []
+        for rkey, mid in pending.items():
+            raw = fetch_results(client, mid)
+            if len(raw) >= expected_per_measurement:
+                results[rkey] = _parse_probe_rtts(raw)
+                completed_this_round.append(rkey)
+                print(f"  {rkey}: complete — {len(results[rkey])}/{expected_per_measurement} probes returned RTT")
+        for rkey in completed_this_round:
+            del pending[rkey]
+        if pending:
+            time.sleep(POLL_INTERVAL_S)
+
+    # Anything still pending at deadline: take whatever we got.
+    for rkey, mid in pending.items():
+        raw = fetch_results(client, mid)
+        results[rkey] = _parse_probe_rtts(raw)
+        print(f"  {rkey}: partial after timeout — {len(results[rkey])}/{expected_per_measurement} probes returned RTT")
+    return results
+
+
+def _parse_probe_rtts(raw: list[dict]) -> dict[int, float]:
+    """Convert an Atlas /results/ payload into {probe_id: min_rtt_ms}."""
+    out: dict[int, float] = {}
+    for row in raw:
+        pid = row.get("prb_id")
+        rtt = probe_rtt_from_result(row)
+        if pid is not None and rtt is not None:
+            out[pid] = rtt
+    return out
 
 
 # ── Orchestration ────────────────────────────────────────────────────────────
@@ -205,6 +251,14 @@ def main():
     parser.add_argument("--city", help="Restrict to one city id")
     parser.add_argument("--region", help="Restrict to one canonical region key")
     parser.add_argument("--probes-per-city", type=int, default=PROBES_PER_CITY)
+    parser.add_argument(
+        "--target", action="append", default=[], metavar="REGION=HOSTNAME",
+        help=(
+            "Override the target hostname for a canonical region. Repeatable. "
+            "Example: --target eu-central=storage.googleapis.com to measure "
+            "Google Cloud's Frankfurt endpoint instead of the default AWS host."
+        ),
+    )
     args = parser.parse_args()
 
     key = (os.environ.get("RIPE_ATLAS_KEY") or "").strip()
@@ -217,6 +271,22 @@ def main():
         sys.exit(f"No matching city: {args.city}")
     if not targets:
         sys.exit(f"No matching region: {args.region}")
+
+    # Apply --target REGION=HOSTNAME overrides on top of the default map.
+    for spec in args.target:
+        if "=" not in spec:
+            sys.exit(f"--target must be REGION=HOSTNAME, got: {spec!r}")
+        rkey, hostname = spec.split("=", 1)
+        rkey, hostname = rkey.strip(), hostname.strip()
+        if rkey not in targets:
+            sys.exit(
+                f"--target region {rkey!r} not in active set {sorted(targets)}. "
+                f"(If you're using --region, the override must match that region.)"
+            )
+        if not hostname:
+            sys.exit(f"--target {rkey}= has empty hostname")
+        targets[rkey] = hostname
+        print(f"Override: {rkey} → {hostname}")
 
     with httpx.Client(
         timeout=httpx.Timeout(30.0, read=60.0),
@@ -274,19 +344,11 @@ def main():
             measurement_ids[rkey] = mid
             print(f"  created measurement {mid} → {rkey} ({target})")
 
-        # Step 3 — poll results
-        all_results: dict[str, dict[int, float]] = {}  # rkey → {probe_id: rtt_ms}
-        for rkey, mid in measurement_ids.items():
-            print(f"Waiting for results of {mid} ({rkey})…")
-            raw = wait_for_results(client, mid, expected=len(all_probes))
-            per_probe: dict[int, float] = {}
-            for row in raw:
-                pid = row.get("prb_id")
-                rtt = probe_rtt_from_result(row)
-                if pid is not None and rtt is not None:
-                    per_probe[pid] = rtt
-            print(f"  {rkey}: {len(per_probe)}/{len(all_probes)} probes returned RTT")
-            all_results[rkey] = per_probe
+        # Step 3 — poll all measurements in parallel (round-robin).
+        print(f"Polling {len(measurement_ids)} measurements in parallel…")
+        all_results = poll_all_measurements(
+            client, measurement_ids, expected_per_measurement=len(all_probes),
+        )
 
     # Step 4 — aggregate per city (min across that city's probes; min reflects the
     # best achievable path, which is what we'd route over).
