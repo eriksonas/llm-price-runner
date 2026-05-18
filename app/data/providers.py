@@ -116,6 +116,16 @@ PROVIDERS = [
         "notes": "Best reasoning-per-dollar from OpenAI.", "is_new": True,
     },
     {
+        "id": "openai-gpt-5-5",
+        "provider": "OpenAI", "model": "GPT-5.5", "model_id": "gpt-5.5",
+        "categories": ["chat", "vision", "code", "reasoning"],
+        "input_usd_per_1m": 5.00, "output_usd_per_1m": 30.00, "context_window_k": 400,
+        "primary_region": "us-east-1", "has_eu_endpoint": False, "eu_latency_ms": 175,
+        "quality_score": 9.95, "aa_index": 59.0, "arena_elo": None,
+        "pricing_url": "https://developers.openai.com/api/docs/pricing", "docs_url": "https://platform.openai.com/docs",
+        "notes": "OpenAI flagship released 2026-04-24. 2× the cost of GPT-5.4. Batch/Flex tiers halve the price.", "is_new": True,
+    },
+    {
         "id": "openai-gpt-5-4",
         "provider": "OpenAI", "model": "GPT-5.4", "model_id": "gpt-5.4",
         "categories": ["chat", "vision", "code", "reasoning"],
@@ -364,6 +374,16 @@ PROVIDERS = [
     # Google  —  https://ai.google.dev/pricing
     # ══════════════════════════════════════════════════════════════════════════
     {
+        "id": "google-gemini-3-pro",
+        "provider": "Google", "model": "Gemini 3 Pro", "model_id": "gemini-3-pro",
+        "categories": ["chat", "vision", "code", "reasoning"],
+        "input_usd_per_1m": 2.00, "output_usd_per_1m": 12.00, "context_window_k": 1000,
+        "primary_region": "eu-west1", "has_eu_endpoint": True, "eu_latency_ms": 40,
+        "quality_score": 9.8, "aa_index": 54.0, "arena_elo": None,
+        "pricing_url": "https://ai.google.dev/gemini-api/docs/pricing", "docs_url": "https://ai.google.dev/gemini-api/docs",
+        "notes": "Gemini 3 Pro GA — Google's flagship. Above 200k context input/output rise to $4/$18 per 1M.", "is_new": True,
+    },
+    {
         "id": "google-gemini-3-1-pro-preview",
         "provider": "Google", "model": "Gemini 3.1 Pro (Preview)", "model_id": "gemini-3.1-pro-preview",
         "categories": ["chat", "vision", "reasoning", "code"],
@@ -516,6 +536,16 @@ PROVIDERS = [
         "quality_score": 7.8, "aa_index": 18.0, "arena_elo": 1303,
         "pricing_url": "https://mistral.ai/technology/#pricing", "docs_url": "https://docs.mistral.ai",
         "notes": "Best EU price/perf for high-volume Dify workflows. Now multimodal.", "is_new": True,
+    },
+    {
+        "id": "mistral-medium-3-5",
+        "provider": "Mistral AI", "model": "Mistral Medium 3.5", "model_id": "mistral-medium-3.5",
+        "categories": ["chat", "code", "reasoning", "vision"],
+        "input_usd_per_1m": 1.50, "output_usd_per_1m": 7.50, "context_window_k": 128,
+        "primary_region": "eu-west3", "has_eu_endpoint": True, "eu_latency_ms": 35,
+        "quality_score": 9.0, "aa_index": 42.0, "arena_elo": None,
+        "pricing_url": "https://mistral.ai/pricing", "docs_url": "https://docs.mistral.ai",
+        "notes": "Mistral Medium 3.5 released 2026-04-29. Adds vision + merged-checkpoint training. ~4× cost of v3.", "is_new": True,
     },
     {
         "id": "mistral-medium-3",
@@ -676,6 +706,26 @@ PROVIDERS = [
     # ══════════════════════════════════════════════════════════════════════════
     # DeepSeek  —  https://api-docs.deepseek.com/quick_start/pricing
     # ══════════════════════════════════════════════════════════════════════════
+    {
+        "id": "deepseek-v4-pro",
+        "provider": "DeepSeek", "model": "DeepSeek V4 Pro", "model_id": "deepseek-v4-pro",
+        "categories": ["chat", "code", "reasoning"],
+        "input_usd_per_1m": 1.74, "output_usd_per_1m": 3.48, "context_window_k": 1000,
+        "primary_region": "cn-east", "has_eu_endpoint": False, "eu_latency_ms": 280,
+        "quality_score": 9.6, "aa_index": 50.0, "arena_elo": None,
+        "pricing_url": "https://api-docs.deepseek.com/quick_start/pricing", "docs_url": "https://api-docs.deepseek.com",
+        "notes": "DeepSeek V4 flagship released Apr 2026. 1M context. Promo $0.435/$0.87 until 2026-05-31. Cache-hit input ~$0.0036/1M. CN-hosted — prefer Fireworks/Together EU for latency.", "is_new": True,
+    },
+    {
+        "id": "deepseek-v4-flash",
+        "provider": "DeepSeek", "model": "DeepSeek V4 Flash", "model_id": "deepseek-v4-flash",
+        "categories": ["chat", "code"],
+        "input_usd_per_1m": 0.14, "output_usd_per_1m": 0.28, "context_window_k": 1000,
+        "primary_region": "cn-east", "has_eu_endpoint": False, "eu_latency_ms": 280,
+        "quality_score": 8.6, "aa_index": 40.0, "arena_elo": None,
+        "pricing_url": "https://api-docs.deepseek.com/quick_start/pricing", "docs_url": "https://api-docs.deepseek.com",
+        "notes": "Budget V4 — 1M context at sub-cent input pricing. Cache hits drop input to ~$0.003/1M.", "is_new": True,
+    },
     {
         "id": "deepseek-chat",
         "provider": "DeepSeek", "model": "DeepSeek V3.2 (chat)", "model_id": "deepseek-chat",
@@ -963,6 +1013,16 @@ PROVIDERS = [
     # xAI  —  https://x.ai/api
     # ══════════════════════════════════════════════════════════════════════════
     {
+        "id": "xai-grok-4-3",
+        "provider": "xAI", "model": "Grok 4.3", "model_id": "grok-4.3",
+        "categories": ["chat", "vision", "code", "reasoning"],
+        "input_usd_per_1m": 1.25, "output_usd_per_1m": 2.50, "context_window_k": 1000,
+        "primary_region": "us-east-1", "has_eu_endpoint": False, "eu_latency_ms": 175,
+        "quality_score": 9.5, "aa_index": 48.0, "arena_elo": None,
+        "pricing_url": "https://x.ai/api", "docs_url": "https://docs.x.ai/api",
+        "notes": "xAI flagship released 2026-04-30. 1M context, reasoning effort none/low/medium/high. ~58% cheaper output vs Grok 4.20.", "is_new": True,
+    },
+    {
         "id": "xai-grok-4-20-reasoning",
         "provider": "xAI", "model": "Grok 4.20 Reasoning", "model_id": "grok-4.20-0309-reasoning",
         "categories": ["chat", "reasoning", "code", "vision"],
@@ -1198,6 +1258,16 @@ PROVIDERS = [
     # ══════════════════════════════════════════════════════════════════════════
     # Moonshot AI (Kimi)  —  https://platform.moonshot.ai/pricing
     # ══════════════════════════════════════════════════════════════════════════
+    {
+        "id": "moonshot-kimi-k2-6",
+        "provider": "Moonshot AI", "model": "Kimi K2.6", "model_id": "kimi-k2.6",
+        "categories": ["chat", "code", "reasoning"],
+        "input_usd_per_1m": 0.60, "output_usd_per_1m": 2.50, "context_window_k": 256,
+        "primary_region": "cn-beijing", "has_eu_endpoint": False, "eu_latency_ms": 260,
+        "quality_score": 9.1, "aa_index": 44.0, "arena_elo": None,
+        "pricing_url": "https://platform.moonshot.ai/pricing", "docs_url": "https://platform.moonshot.ai/docs",
+        "notes": "1T-param MoE (32B active) released 2026-04-20. Ties GPT-5.5 on coding benchmarks. Open weights.", "is_new": True,
+    },
     {
         "id": "moonshot-kimi-k2",
         "provider": "Moonshot AI", "model": "Kimi K2", "model_id": "kimi-k2-0905",

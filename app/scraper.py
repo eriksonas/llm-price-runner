@@ -32,6 +32,7 @@ ARENA_API_URL = "https://api.wulong.dev/arena-ai-leaderboards/v1/leaderboard?nam
 
 AA_SLUGS = {
     # ── OpenAI ───────────────────────────────────────────────────────────────
+    "gpt-5.5":                                       "gpt-5-5",
     "gpt-5.4":                                       "gpt-5-4",
     "gpt-5.4-mini":                                  "gpt-5-4-mini",
     "gpt-5.4-nano":                                  "gpt-5-4-nano",
@@ -72,6 +73,7 @@ AA_SLUGS = {
     "eu.anthropic.claude-3-5-haiku-20241022-v1:0":   "claude-3-5-haiku",
 
     # ── Google ───────────────────────────────────────────────────────────────
+    "gemini-3-pro":                                  "gemini-3-pro",
     "gemini-3.1-pro-preview":                        "gemini-3-1-pro-preview",
     "gemini-3-flash-preview":                        "gemini-3-flash",
     "gemini-3.1-flash-lite-preview":                 "gemini-3-1-flash-lite-preview",
@@ -87,6 +89,7 @@ AA_SLUGS = {
     # ── Mistral ──────────────────────────────────────────────────────────────
     "mistral-large-latest":                          "mistral-large-2",
     "mistral-large-3":                               "mistral-large-3",
+    "mistral-medium-3.5":                            "mistral-medium-3-5",
     "mistral-medium-latest":                         "mistral-medium-3",
     "mistral-small-latest":                          "mistral-small-3",
     "magistral-medium-latest":                       "magistral-medium",
@@ -99,6 +102,8 @@ AA_SLUGS = {
     # codestral-latest: dropped from AA v4 catalogue; seeded value stays.
 
     # ── DeepSeek ─────────────────────────────────────────────────────────────
+    "deepseek-v4-pro":                               "deepseek-v4-pro",
+    "deepseek-v4-flash":                             "deepseek-v4-flash",
     "deepseek-chat":                                 "deepseek-v3",
     "deepseek-v3.1":                                 "deepseek-v3-1",
     "deepseek-v3.2-exp":                             "deepseek-v3-2",
@@ -138,6 +143,7 @@ AA_SLUGS = {
     # qwen-plus: no clean match in AA v4.
 
     # ── xAI ──────────────────────────────────────────────────────────────────
+    "grok-4.3":                                               "grok-4-3",
     "grok-4.20-0309-reasoning":                               "grok-4-20",
     "grok-4.20-0309-non-reasoning":                           "grok-4-20-non-reasoning",
     "grok-4-1-fast-reasoning":                                "grok-4-1-fast-reasoning",
@@ -156,6 +162,7 @@ AA_SLUGS = {
     "sonar":                                                  "sonar",
 
     # ── Moonshot ─────────────────────────────────────────────────────────────
+    "kimi-k2.6":                                              "kimi-k2-6",
     "kimi-k2-0905":                                           "kimi-k2",
     "kimi-k2-thinking":                                       "kimi-k2-thinking",
     "moonshotai/kimi-k2-instruct":                            "kimi-k2",
