@@ -55,18 +55,27 @@ POLL_TIMEOUT_S = 300
 RETRY_MAX_ATTEMPTS = 4
 RETRY_BACKOFF_S = (1, 3, 8)  # waited between attempts 1→2, 2→3, 3→4
 
-# One representative hostname per canonical region. AWS regional API endpoints
-# accept TCP:443 and (mostly) respond to ICMP. CN endpoints are best-effort —
-# Alibaba for cn-east since AWS lacks Shanghai.
+# One representative hostname per canonical region.
+#
+# S3 region endpoints chosen for us-west / eu-west / eu-west3 / cn-beijing
+# because AWS's EC2 control-plane endpoints (ec2.<region>.amazonaws.com)
+# stopped responding to ICMP from Atlas probes globally in mid-May 2026.
+# S3 data-plane endpoints live in the same datacenter on different LB
+# fleet and still accept ICMP. Verified empirically by switching one
+# region at a time and comparing RTTs against the EC2 baseline before
+# the policy change — values matched within ~4%.
+#
+# EC2 endpoints retained for us-east / eu-central / eu-north / cn-east
+# (cn-east via Alibaba) because they still respond.
 TARGETS = {
     "us-east":    "ec2.us-east-1.amazonaws.com",
-    "us-west":    "ec2.us-west-2.amazonaws.com",
-    "eu-west":    "ec2.eu-west-1.amazonaws.com",
-    "eu-west3":   "ec2.eu-west-3.amazonaws.com",
+    "us-west":    "s3.us-west-2.amazonaws.com",
+    "eu-west":    "s3.eu-west-1.amazonaws.com",
+    "eu-west3":   "s3.eu-west-3.amazonaws.com",
     "eu-central": "ec2.eu-central-1.amazonaws.com",
     "eu-north":   "ec2.eu-north-1.amazonaws.com",
     "cn-east":    "ecs.cn-shanghai.aliyuncs.com",
-    "cn-beijing": "ec2.cn-north-1.amazonaws.com.cn",
+    "cn-beijing": "s3.cn-north-1.amazonaws.com.cn",
 }
 
 OUTPUT_PATH = ROOT / "app" / "data" / "rtt_measured.json"
