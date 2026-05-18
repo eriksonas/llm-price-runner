@@ -1,0 +1,17 @@
+__pycache__/
+*.py[co]
+*.bak
+
+.env
+.env.*
+!.env.example
+
+*.sqlite
+*.db
+
+.venv/
+venv/
+
+.pytest_cache/
+
+.DS_Store

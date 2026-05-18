@@ -1,0 +1,45 @@
+services:
+  llm-price-runner:
+    build: .
+    container_name: llm-price-runner
+    expose:
+      - "8080"
+    volumes:
+      - price_data:/data
+    restart: unless-stopped
+    environment:
+      - TZ=Europe/Vilnius
+    networks:
+      - traefik-proxy
+      - internal
+    labels:
+      - "traefik.enable=true"
+      # ── Router (HTTPS) ────────────────────────────────────────────────────
+      - "traefik.http.routers.llm-price-runner.rule=Host(`models.agent-startup.com`)"
+      - "traefik.http.routers.llm-price-runner.entrypoints=websecure"
+      - "traefik.http.routers.llm-price-runner.tls=true"
+      - "traefik.http.routers.llm-price-runner.tls.certresolver=letsencrypt"
+      # ── Redirect HTTP → HTTPS ─────────────────────────────────────────────
+      - "traefik.http.routers.llm-price-runner-http.rule=Host(`models.agent-startup.com`)"
+      - "traefik.http.routers.llm-price-runner-http.entrypoints=web"
+      - "traefik.http.routers.llm-price-runner-http.middlewares=llm-https-redirect"
+      - "traefik.http.middlewares.llm-https-redirect.redirectscheme.scheme=https"
+      - "traefik.http.middlewares.llm-https-redirect.redirectscheme.permanent=true"
+      # ── Service ───────────────────────────────────────────────────────────
+      - "traefik.http.services.llm-price-runner.loadbalancer.server.port=8080"
+      - "traefik.docker.network=traefik-proxy"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/healthz', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+volumes:
+  price_data:
+
+networks:
+  traefik-proxy:
+    external: true
+  internal:
+    driver: bridge

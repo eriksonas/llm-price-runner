@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LLM Price Runner</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --bg: #0f1117; --surface: #1a1d27; --surface2: #222536; --border: #2d3148;
+      --text: #e2e8f0; --muted: #7c85a2; --accent: #6366f1; --accent2: #818cf8;
+      --green: #22c55e; --yellow: #eab308; --red: #ef4444; --orange: #f97316;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: var(--bg); color: var(--text); font-family: 'Inter', system-ui, sans-serif; font-size: 14px; }
+
+    nav {
+      background: var(--surface); border-bottom: 1px solid var(--border);
+      padding: 0 24px; display: flex; align-items: center; gap: 16px;
+      height: 56px; position: sticky; top: 0; z-index: 100;
+    }
+    nav .logo { font-size: 17px; font-weight: 700; color: var(--accent2); letter-spacing: -0.3px; }
+    nav .logo span { color: var(--muted); font-weight: 400; }
+    nav .pill { background: #1e2035; border: 1px solid var(--border); border-radius: 20px; padding: 3px 10px; font-size: 12px; color: var(--muted); }
+    nav .spacer { flex: 1; }
+    nav .updated { font-size: 12px; color: var(--muted); }
+    nav button.refresh-btn { background: var(--accent); border: none; color: #fff; border-radius: 8px; padding: 6px 14px; cursor: pointer; font-size: 13px; }
+    nav button.refresh-btn:hover { background: var(--accent2); }
+
+    main { max-width: 1500px; margin: 0 auto; padding: 24px 20px; }
+
+    .controls-bar { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 14px 18px; margin-bottom: 20px; display: flex; flex-wrap: wrap; gap: 20px; align-items: center; }
+    .control-group { display: flex; flex-direction: column; gap: 4px; }
+    .control-group .label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.6px; }
+    .control-group .chips { display: flex; gap: 4px; flex-wrap: wrap; }
+    .chip { background: var(--surface2); border: 1px solid var(--border); color: var(--muted); border-radius: 6px; padding: 4px 10px; cursor: pointer; font-size: 12px; transition: all 0.15s; }
+    .chip.active, .chip:hover { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .chip .ratio { font-size: 10px; opacity: 0.7; margin-left: 4px; }
+    .controls-bar .formula { flex: 1; min-width: 260px; font-size: 12px; color: var(--muted); text-align: right; font-family: 'SF Mono', monospace; }
+    .controls-bar .formula strong { color: var(--accent2); }
+    .city-picker { display: flex; flex-direction: column; gap: 4px; max-width: 800px; }
+    .city-row { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; }
+    .cluster-pill { background: var(--surface2); border: 1px solid var(--border); color: var(--muted); border-radius: 5px; padding: 3px 7px; font-size: 11px; cursor: pointer; transition: all 0.12s; white-space: nowrap; }
+    .cluster-pill:hover { color: var(--text); border-color: var(--accent); }
+    .cluster-pill.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .cluster-pill.has-city { border-color: var(--accent2); color: var(--accent2); }
+    .cluster-pill.active.has-city { color: #fff; }
+    .cluster-pill .dot { font-size: 8px; color: var(--accent2); margin-left: 3px; }
+    .cluster-pill.active .dot { color: #fff; }
+    .city-current { font-size: 11px; color: var(--muted); margin-left: auto; padding-left: 8px; white-space: nowrap; }
+    .city-current strong { color: var(--accent2); font-weight: 600; }
+    .tb-sep { width: 1px; height: 18px; background: var(--border); margin: 0 4px; }
+
+    .stats-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; margin-bottom: 28px; }
+    .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px 20px; }
+    .stat-card .label { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+    .stat-card .value { font-size: 24px; font-weight: 700; }
+    .stat-card .sub { font-size: 11px; color: var(--muted); margin-top: 4px; }
+
+    .best-section { margin-bottom: 28px; }
+    .best-section h2 { font-size: 15px; font-weight: 600; color: var(--muted); margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .best-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+    .best-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; cursor: pointer; transition: border-color 0.15s; }
+    .best-card:hover { border-color: var(--accent); }
+    .best-card .cat { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+    .best-card .name { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+    .best-card .provider-badge { display: inline-block; border-radius: 4px; padding: 1px 7px; font-size: 11px; font-weight: 500; color: #fff; margin-bottom: 8px; }
+    .best-card .metrics { display: flex; gap: 12px; font-size: 12px; color: var(--muted); flex-wrap: wrap; }
+    .best-card .metrics strong { color: var(--text); }
+
+    .toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 16px; }
+    .cat-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+    .cat-tab { background: var(--surface2); border: 1px solid var(--border); color: var(--muted); border-radius: 8px; padding: 5px 14px; cursor: pointer; font-size: 13px; transition: all 0.15s; }
+    .cat-tab.active, .cat-tab:hover { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .toolbar .spacer { flex: 1; min-width: 20px; }
+    .sort-select { background: var(--surface2); border: 1px solid var(--border); color: var(--text); border-radius: 8px; padding: 5px 12px; font-size: 13px; cursor: pointer; outline: none; }
+    .search-input { background: var(--surface2); border: 1px solid var(--border); color: var(--text); border-radius: 8px; padding: 5px 12px; font-size: 13px; outline: none; width: 200px; }
+    .search-input::placeholder { color: var(--muted); }
+
+    .table-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; }
+    table { width: 100%; border-collapse: collapse; }
+    thead th { background: var(--surface2); padding: 10px 12px; text-align: left; font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; cursor: pointer; user-select: none; white-space: nowrap; }
+    thead th:hover { color: var(--text); }
+    thead th .sort-icon { opacity: 0.4; margin-left: 4px; font-size: 10px; }
+    thead th.sorted .sort-icon { opacity: 1; color: var(--accent2); }
+    tbody tr { border-top: 1px solid var(--border); transition: background 0.1s; }
+    tbody tr:hover { background: var(--surface2); }
+    td { padding: 10px 12px; vertical-align: middle; }
+
+    .provider-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; margin-right: 6px; }
+    .model-name { font-weight: 600; font-size: 13px; }
+    .model-id { font-size: 11px; color: var(--muted); font-family: monospace; margin-top: 2px; }
+    .tag { display: inline-block; background: #1e2035; border: 1px solid var(--border); border-radius: 4px; padding: 1px 6px; font-size: 10px; color: var(--muted); margin: 1px 2px; }
+    .tag.new-badge { background: #1a2e1a; border-color: #22c55e44; color: var(--green); }
+
+    .latency { display: inline-flex; align-items: center; gap: 5px; border-radius: 6px; padding: 3px 8px; font-size: 12px; font-weight: 600; }
+    .latency.excellent { background: #14301a; color: #4ade80; }
+    .latency.good      { background: #1f2a10; color: #a3e635; }
+    .latency.fair      { background: #2a2210; color: #fbbf24; }
+    .latency.poor      { background: #2d1212; color: #f87171; }
+
+    .score-bar-wrap { display: flex; align-items: center; gap: 8px; min-width: 110px; }
+    .score-bar-bg { flex: 1; height: 6px; background: var(--surface2); border-radius: 3px; overflow: hidden; }
+    .score-bar-fill { height: 100%; border-radius: 3px; transition: width 0.3s; }
+    .score-num { font-size: 12px; font-weight: 600; min-width: 42px; text-align: right; font-variant-numeric: tabular-nums; }
+    .score-sub { font-size: 10px; color: var(--muted); margin-top: 2px; }
+
+    /* Quality index badges */
+    .qi-wrap { display: flex; flex-direction: column; gap: 3px; }
+    .qi-badge { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; white-space: nowrap; }
+    .qi-badge .qi-src { font-size: 9px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.3px; min-width: 32px; }
+    .qi-badge .qi-val { font-weight: 600; }
+    .qi-none { font-size: 11px; color: var(--muted); }
+
+    .price-cell { font-variant-numeric: tabular-nums; }
+    .price-in  { color: #86efac; font-weight: 500; }
+    .price-out { color: #fca5a5; font-weight: 500; }
+    .price-label { font-size: 10px; color: var(--muted); }
+
+    .link-btn { display: inline-flex; align-items: center; gap: 4px; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 3px 8px; font-size: 11px; color: var(--muted); text-decoration: none; margin: 1px; transition: all 0.15s; }
+    .link-btn:hover { border-color: var(--accent); color: var(--accent2); }
+    .ctx { font-size: 12px; color: var(--muted); }
+
+    /* Modal */
+    .modal-overlay { display: none; position: fixed; inset: 0; background: #00000088; z-index: 200; align-items: center; justify-content: center; }
+    .modal-overlay.open { display: flex; }
+    .modal { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 28px; width: 92%; max-width: 720px; max-height: 85vh; overflow-y: auto; position: relative; }
+    .modal-close { position: absolute; top: 16px; right: 16px; background: var(--surface2); border: 1px solid var(--border); color: var(--muted); border-radius: 8px; padding: 4px 10px; cursor: pointer; font-size: 13px; }
+    .modal-close:hover { color: var(--text); }
+    .modal h2 { font-size: 19px; margin-bottom: 4px; }
+    .modal .provider-sub { font-size: 13px; color: var(--muted); margin-bottom: 20px; }
+    .modal-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px; }
+    .modal-stat { background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
+    .modal-stat .lbl { font-size: 11px; color: var(--muted); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.4px; }
+    .modal-stat .val { font-size: 17px; font-weight: 700; }
+    .modal .notes-box { background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; font-size: 13px; color: var(--muted); margin-bottom: 20px; line-height: 1.6; }
+    .modal .links-row { display: flex; gap: 8px; flex-wrap: wrap; }
+    .modal .links-row a { background: var(--accent); border: none; color: #fff; border-radius: 8px; padding: 8px 16px; font-size: 13px; text-decoration: none; font-weight: 500; }
+    .modal .links-row a.secondary { background: var(--surface2); border: 1px solid var(--border); color: var(--text); }
+    .modal .links-row a:hover { opacity: 0.85; }
+    .chart-section { margin-top: 24px; }
+    .chart-section h3 { font-size: 13px; color: var(--muted); margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.4px; }
+
+    /* Show-math audit panel */
+    .math-panel { margin-top: 20px; background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; font-family: 'SF Mono', 'Menlo', monospace; font-size: 12px; line-height: 1.7; }
+    .math-panel h3 { font-family: 'Inter', sans-serif; font-size: 12px; color: var(--muted); margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .math-row { display: flex; justify-content: space-between; gap: 12px; color: var(--muted); border-bottom: 1px dashed #2d314855; padding: 3px 0; }
+    .math-row:last-child { border-bottom: none; color: var(--text); font-weight: 700; padding-top: 8px; border-top: 1px solid var(--border); margin-top: 4px; }
+    .math-row .lhs { color: var(--text); }
+    .math-row .rhs { text-align: right; white-space: nowrap; }
+    .math-row .expr { color: var(--muted); font-size: 11px; }
+
+    /* Index source note */
+    .index-note { font-size: 11px; color: var(--muted); margin-top: 20px; padding: 12px 16px; background: var(--surface2); border-radius: 8px; border: 1px solid var(--border); line-height: 1.7; }
+    .index-note a { color: var(--accent2); text-decoration: none; }
+    .index-note code { background: #1e2035; padding: 1px 5px; border-radius: 4px; font-size: 11px; }
+
+    footer { text-align: center; padding: 24px; font-size: 12px; color: var(--muted); border-top: 1px solid var(--border); margin-top: 40px; }
+    .loading { text-align: center; padding: 40px; color: var(--muted); }
+
+    @media (max-width: 1100px) { .hide-lg { display: none; } }
+    @media (max-width: 800px)  { .hide-mobile { display: none; } }
+    @media (max-width: 600px)  { nav .pill { display: none; } .modal-grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+
+<nav>
+  <div class="logo">⚡ LLM Price Runner</div>
+  <div class="pill" id="nav-count">— models</div>
+  <div class="pill" id="nav-providers">— providers</div>
+  <div class="spacer"></div>
+  <div class="updated" id="nav-updated">Loading…</div>
+  <button class="refresh-btn" onclick="manualRefresh()">↻ Refresh</button>
+</nav>
+
+<main>
+
+  <div class="controls-bar">
+    <div class="control-group">
+      <div class="label">Workload (input : output ratio)</div>
+      <div class="chips" id="workload-chips"></div>
+    </div>
+    <div class="control-group">
+      <div class="label">Latency sensitivity</div>
+      <div class="chips" id="sensitivity-chips"></div>
+    </div>
+    <div class="control-group">
+      <div class="label">Your location</div>
+      <div class="city-picker" id="city-picker"></div>
+    </div>
+    <div class="formula">
+      <strong>AI Value</strong> = log₁₀(quality / blended $) − log₁₀((ms + k/4) / (k + k/4))<br>
+      <span style="font-size:11px">ms = TTFT + city→region RTT + α·gen_time · bonus below knee k, penalty above · +1.0 ≈ 10× value</span>
+    </div>
+  </div>
+
+  <div class="stats-row">
+    <div class="stat-card">
+      <div class="label">Cheapest Input</div>
+      <div class="value" id="stat-cheapest-in">—</div>
+      <div class="sub" id="stat-cheapest-in-model">per 1M tokens</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Best AI Value (chat)</div>
+      <div class="value" id="stat-best-ai">—</div>
+      <div class="sub" id="stat-best-ai-model">AI value score</div>
+    </div>
+    <div class="stat-card">
+      <div class="label" id="stat-fastest-label">Fastest from Vilnius 🇱🇹</div>
+      <div class="value" id="stat-fastest">—</div>
+      <div class="sub" id="stat-fastest-model">estimated RTT</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Best Reasoning AI Value</div>
+      <div class="value" id="stat-reasoning">—</div>
+      <div class="sub" id="stat-reasoning-model">AI value score</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">EU-Native Models</div>
+      <div class="value" id="stat-eu-count">—</div>
+      <div class="sub">with European endpoints</div>
+    </div>
+  </div>
+
+  <section class="best-section">
+    <h2>🏆 Best AI Value per Category</h2>
+    <div class="best-grid" id="best-grid"><div class="loading">Loading…</div></div>
+  </section>
+
+  <div class="toolbar">
+    <div class="cat-tabs" id="cat-tabs"></div>
+    <span class="tb-sep"></span>
+    <div class="cat-tabs" id="license-tabs"></div>
+    <span class="tb-sep"></span>
+    <div class="cat-tabs" id="frontier-tabs"></div>
+    <div class="spacer"></div>
+    <input class="search-input" type="text" placeholder="Search models…" id="search-input" oninput="filterModels()" />
+    <select class="sort-select" id="sort-select" onchange="renderTable()">
+      <option value="ai_value_score">AI Value ↓</option>
+      <option value="intel_per_dollar">Intel per $ ↓</option>
+      <option value="input_usd_per_1m">Input Price ↑</option>
+      <option value="output_usd_per_1m">Output Price ↑</option>
+      <option value="blended_cost_usd_per_1m">Blended Cost ↑</option>
+      <option value="display_latency_ms">Latency ↑</option>
+      <option value="quality_index">Quality Index ↓</option>
+      <option value="arena_elo">Arena ELO ↓</option>
+    </select>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th onclick="setSort('provider')">Provider <span class="sort-icon">↕</span></th>
+          <th onclick="setSort('model')">Model <span class="sort-icon">↕</span></th>
+          <th onclick="setSort('input_usd_per_1m')">In / 1M <span class="sort-icon">↕</span></th>
+          <th onclick="setSort('output_usd_per_1m')">Out / 1M <span class="sort-icon">↕</span></th>
+          <th class="hide-mobile" onclick="setSort('context_window_k')">Ctx <span class="sort-icon">↕</span></th>
+          <th onclick="setSort('display_latency_ms')">Latency <span id="lat-col-flag">🇱🇹</span> <span class="sort-icon">↕</span></th>
+          <th class="hide-lg" onclick="setSort('quality_index')">Quality Index <span class="sort-icon">↕</span></th>
+          <th onclick="setSort('ai_value_score')">AI Value <span class="sort-icon">↕</span></th>
+          <th class="hide-mobile">Links</th>
+        </tr>
+      </thead>
+      <tbody id="model-tbody">
+        <tr><td colspan="9" class="loading">Loading models…</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="index-note">
+    📊 <strong>Methodology</strong>:
+    <strong>Quality</strong> = <a href="https://artificialanalysis.ai/models" target="_blank">Artificial Analysis Intelligence Index</a> (rebased 2026, top frontier ~57–60).
+    <strong>Cost</strong> = workload-weighted blend of input & output $/1M tokens.
+    <strong>Latency</strong> = TTFT (inference) + estimated RTT from your selected city to the model's datacenter region, then a symmetric log adjustment around the sensitivity knee (bonus below, penalty above).
+    <strong>Throughput</strong> (tok/s) is shown per model and folded into <em>typical response time</em> for the chosen workload.
+    <br>
+    Formula: <code>AI Value = log₁₀(quality_index / blended_cost) − log₁₀((latency_ms + knee/4) / (knee + knee/4))</code>.
+    Absolute score — no rescaling. <a href="https://lmarena.ai" target="_blank">LMSYS Chatbot Arena ELO</a> shown separately for human-preference context. Auto-refreshed every 6h.
+  </div>
+
+</main>
+
+<div class="modal-overlay" id="modal-overlay" onclick="closeModal(event)">
+  <div class="modal" id="modal-content">
+    <button class="modal-close" onclick="closeModalDirect()">✕ Close</button>
+    <div id="modal-inner"></div>
+  </div>
+</div>
+
+<footer>
+  LLM Price Runner · Prices indicative — verify on provider pricing pages · Quality indices from AA &amp; Arena Leaderboards
+</footer>
+
+<script>
+let allModels = [], filteredModels = [], providerColors = {}, categories = [];
+let workloads = [], sensitivities = [], cities = [], clusters = [];
+let activeCategory = 'all', currentLicense = 'all';
+let currentCluster = null;
+let currentFrontier = 'frontier';   // 'all' | 'frontier' | 'top'
+let sortKey = 'ai_value_score', sortAsc = false;
+let currentWorkload = 'chat', currentSensitivity = 'interactive', currentCity = 'vilnius';
+
+const FRONTIER_TIERS = [
+  { id: 'all',      label: 'All quality',  min: 0,  title: 'No quality gate — includes nano / low-end models' },
+  { id: 'frontier', label: '🏆 Frontier',   min: 35, title: 'Hide models with quality_index < 35 (AA 2026 scale)' },
+  { id: 'top',      label: '💎 Top frontier', min: 50, title: 'Only cutting-edge models (quality_index ≥ 50 on AA 2026 scale)' },
+];
+function frontierMin() {
+  const t = FRONTIER_TIERS.find(t => t.id === currentFrontier);
+  return t ? t.min : 0;
+}
+function frontierPool() {
+  const min = frontierMin();
+  return min > 0 ? allModels.filter(m => (m.quality_index ?? 0) >= min) : allModels;
+}
+function renderFrontierTabs() {
+  document.getElementById('frontier-tabs').innerHTML = FRONTIER_TIERS.map(t =>
+    `<button class="cat-tab${t.id === currentFrontier ? ' active' : ''}" title="${t.title}" onclick="setFrontier('${t.id}')">${t.label}</button>`
+  ).join('');
+}
+function setFrontier(id) {
+  currentFrontier = id;
+  renderFrontierTabs();
+  filterModels();
+  renderStats();
+  renderBestGrid();
+}
+
+const LICENSE_TABS = [
+  { id: 'all',         label: 'All licenses' },
+  { id: 'open',        label: 'Open-Weight' },
+  { id: 'proprietary', label: 'Proprietary' },
+];
+
+// Open-weight classification lives in app/scoring.py and is exposed on each
+// model as `is_open_weight`. This helper just reads the flag, with a defensive
+// `!!` so missing values render as proprietary.
+function isOpenWeight(m) { return !!m.is_open_weight; }
+
+function cityFlag(id) {
+  const c = cities.find(x => x.id === id);
+  return c ? c.flag : '🌐';
+}
+function cityLabel(id) {
+  const c = cities.find(x => x.id === id);
+  return c ? c.label : id;
+}
+
+async function boot() {
+  const meta = await fetch('/api/meta').then(r => r.json());
+  providerColors = meta.provider_colors;
+  categories = meta.categories;
+  workloads = meta.workloads;
+  sensitivities = meta.sensitivities;
+  cities = meta.cities || [];
+  clusters = meta.clusters || [];
+  currentWorkload = meta.default_workload;
+  currentSensitivity = meta.default_sensitivity;
+  currentCity = meta.default_city || 'vilnius';
+  currentCluster = cityClusterId(currentCity) || (clusters[0] && clusters[0].id) || null;
+  document.getElementById('nav-count').textContent = `${meta.model_count} models`;
+  document.getElementById('nav-providers').textContent = `${meta.provider_count} providers`;
+  renderWorkloadChips();
+  renderSensitivityChips();
+  renderCityChips();
+  renderCatTabs();
+  renderLicenseTabs();
+  renderFrontierTabs();
+  await reloadModels();
+}
+
+async function reloadModels() {
+  const url = `/api/models?workload=${currentWorkload}&sensitivity=${currentSensitivity}&city=${currentCity}`;
+  const data = await fetch(url).then(r => r.json());
+  allModels = data.models;
+  filteredModels = [...allModels];
+  document.getElementById('nav-updated').textContent = `Updated: ${data.last_updated}`;
+  document.getElementById('lat-col-flag').textContent = cityFlag(currentCity);
+  document.getElementById('stat-fastest-label').textContent = `Fastest from ${cityLabel(currentCity)} ${cityFlag(currentCity)}`;
+  filterModels();
+  renderStats();
+  renderBestGrid();
+}
+
+function renderWorkloadChips() {
+  document.getElementById('workload-chips').innerHTML = workloads.map(w =>
+    `<button class="chip${w.id === currentWorkload ? ' active' : ''}" onclick="setWorkload('${w.id}')">${w.label}<span class="ratio">${w.ratio.replace(' in:out','')}</span></button>`
+  ).join('');
+}
+function renderSensitivityChips() {
+  document.getElementById('sensitivity-chips').innerHTML = sensitivities.map(s =>
+    `<button class="chip${s.id === currentSensitivity ? ' active' : ''}" onclick="setSensitivity('${s.id}')">${s.label}<span class="ratio">${s.knee_ms}ms</span></button>`
+  ).join('');
+}
+function cityClusterId(cityId) {
+  const c = cities.find(x => x.id === cityId);
+  return c ? c.cluster : null;
+}
+function renderCityChips() {
+  const picker = document.getElementById('city-picker');
+  const list = clusters.length ? clusters : [{ id: '_all', label: 'All', flag: '🌐' }];
+  const activeClusterId = currentCluster || cityClusterId(currentCity) || (list[0] && list[0].id);
+  const activeClusterId_ = list.some(cl => cl.id === activeClusterId) ? activeClusterId : list[0].id;
+  const clusterRow = list.map(cl => {
+    const members = clusters.length ? cities.filter(c => c.cluster === cl.id) : cities;
+    if (!members.length) return '';
+    const hasCurrent = members.some(c => c.id === currentCity);
+    const cls = ['cluster-pill'];
+    if (cl.id === activeClusterId_) cls.push('active');
+    if (hasCurrent) cls.push('has-city');
+    const dot = hasCurrent ? '<span class="dot">●</span>' : '';
+    return `<button type="button" class="${cls.join(' ')}" onclick="setCityCluster('${cl.id}')">${cl.flag} ${cl.label}${dot}</button>`;
+  }).join('');
+  const members = clusters.length ? cities.filter(c => c.cluster === activeClusterId_) : cities;
+  const cityRow = members.map(c =>
+    `<button class="chip${c.id === currentCity ? ' active' : ''}" onclick="setCity('${c.id}')" title="${c.label}">${c.flag}<span class="ratio">${c.label}</span></button>`
+  ).join('');
+  const currentInView = members.some(c => c.id === currentCity);
+  const breadcrumb = currentInView ? '' : `<span class="city-current">Selected: <strong>${cityFlag(currentCity)} ${cityLabel(currentCity)}</strong></span>`;
+  picker.innerHTML = `<div class="city-row">${clusterRow}</div><div class="city-row">${cityRow}${breadcrumb}</div>`;
+}
+function setCityCluster(id) { currentCluster = id; renderCityChips(); }
+function renderLicenseTabs() {
+  document.getElementById('license-tabs').innerHTML = LICENSE_TABS.map(t =>
+    `<button class="cat-tab${t.id === currentLicense ? ' active' : ''}" onclick="setLicense('${t.id}')">${t.label}</button>`
+  ).join('');
+}
+function setLicense(id) { currentLicense = id; renderLicenseTabs(); filterModels(); }
+function setWorkload(id) { currentWorkload = id; renderWorkloadChips(); reloadModels(); }
+function setSensitivity(id) { currentSensitivity = id; renderSensitivityChips(); reloadModels(); }
+function setCity(id) {
+  currentCity = id;
+  currentCluster = cityClusterId(id) || currentCluster;
+  renderCityChips();
+  reloadModels();
+}
+
+function renderCatTabs() {
+  document.getElementById('cat-tabs').innerHTML = categories.map(c =>
+    `<button class="cat-tab${c.id === activeCategory ? ' active' : ''}" onclick="setCategory('${c.id}')">${c.label}</button>`
+  ).join('');
+}
+
+function setCategory(cat) { activeCategory = cat; renderCatTabs(); filterModels(); }
+
+function filterModels() {
+  const q = document.getElementById('search-input').value.toLowerCase();
+  filteredModels = frontierPool().filter(m => {
+    const catOk = activeCategory === 'all' || m.categories.includes(activeCategory);
+    const searchOk = !q || m.model.toLowerCase().includes(q) || m.provider.toLowerCase().includes(q) || m.model_id.toLowerCase().includes(q);
+    const licOk = currentLicense === 'all' || (currentLicense === 'open' ? isOpenWeight(m) : !isOpenWeight(m));
+    return catOk && searchOk && licOk;
+  });
+  renderTable();
+}
+
+function setSort(key) {
+  if (sortKey === key) { sortAsc = !sortAsc; }
+  else { sortKey = key; sortAsc = ['input_usd_per_1m','output_usd_per_1m','blended_cost_usd_per_1m','display_latency_ms'].includes(key); }
+  document.getElementById('sort-select').value = sortKey;
+  renderTable();
+}
+
+function sortModels(models) {
+  return [...models].sort((a, b) => {
+    let va = a[sortKey] ?? -Infinity, vb = b[sortKey] ?? -Infinity;
+    if (typeof va === 'string') return sortAsc ? va.localeCompare(vb) : vb.localeCompare(va);
+    return sortAsc ? va - vb : vb - va;
+  });
+}
+
+function renderStats() {
+  const pool = frontierPool();
+  // "Cheapest input" stays on the full catalogue — price stat shouldn't
+  // lie about what's actually available at the bottom of the market.
+  const cheapestIn = [...allModels].sort((a,b) => a.input_usd_per_1m - b.input_usd_per_1m)[0];
+  document.getElementById('stat-cheapest-in').textContent = `$${cheapestIn.input_usd_per_1m.toFixed(4)}`;
+  document.getElementById('stat-cheapest-in-model').textContent = cheapestIn.model;
+
+  const chatModels = pool.filter(m => m.categories.includes('chat'));
+  const bestAI = [...chatModels].sort((a,b) => b.ai_value_score - a.ai_value_score)[0];
+  if (bestAI) {
+    document.getElementById('stat-best-ai').textContent = bestAI.ai_value_score.toFixed(2);
+    document.getElementById('stat-best-ai-model').textContent = bestAI.model;
+  }
+
+  const fastest = [...pool].sort((a,b) => a.display_latency_ms - b.display_latency_ms)[0];
+  if (fastest) {
+    document.getElementById('stat-fastest').textContent = `~${fastest.display_latency_ms}ms`;
+    document.getElementById('stat-fastest-model').textContent = fastest.model;
+  }
+
+  const reasoning = pool.filter(m => m.categories.includes('reasoning'));
+  const bestR = [...reasoning].sort((a,b) => b.ai_value_score - a.ai_value_score)[0];
+  if (bestR) {
+    document.getElementById('stat-reasoning').textContent = bestR.ai_value_score.toFixed(2);
+    document.getElementById('stat-reasoning-model').textContent = bestR.model;
+  }
+
+  document.getElementById('stat-eu-count').textContent = pool.filter(m => m.has_eu_endpoint).length;
+}
+
+function renderBestGrid() {
+  const catMap = { chat: '💬 Chat', code: '💻 Code', reasoning: '🧠 Reasoning', vision: '👁️ Vision', embeddings: '🔢 Embeddings' };
+  const pool = frontierPool();
+  document.getElementById('best-grid').innerHTML = Object.entries(catMap).map(([catId, catLabel]) => {
+    const eligible = pool.filter(m => m.categories.includes(catId));
+    if (!eligible.length) return '';
+    const best = eligible.sort((a,b) => b.ai_value_score - a.ai_value_score)[0];
+    const color = providerColors[best.provider] || '#6366f1';
+    return `<div class="best-card" onclick="openModal('${best.id}')">
+      <div class="cat">${catLabel}</div>
+      <div class="name">${best.model}</div>
+      <span class="provider-badge" style="background:${color}22;color:${color};border:1px solid ${color}44">${best.provider}</span>
+      <div class="metrics">
+        <div><span class="price-label">Blend</span> <strong>$${best.blended_cost_usd_per_1m.toFixed(3)}</strong></div>
+        <div><span class="price-label">RTT</span> <strong>~${best.display_latency_ms}ms</strong></div>
+        ${best.aa_index ? `<div><span class="price-label">AA</span> <strong>${best.aa_index}</strong></div>` : ''}
+        <div><span class="price-label">AI★</span> <strong>${best.ai_value_score.toFixed(2)}</strong></div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function latencyClass(ms) {
+  return ms <= 45 ? 'excellent' : ms <= 80 ? 'good' : ms <= 160 ? 'fair' : 'poor';
+}
+
+// AI Value absolute score (AA 2026 scale — Intelligence Index rebased to ~0-60):
+// typical frontier range roughly -1.2 to +1.5 for chat workloads.
+// Colors by threshold; bar width normalised against a fixed band for visual comparison.
+function aiValueColor(v) { return v >= 1.0 ? '#22c55e' : v >= 0.5 ? '#eab308' : v >= -0.2 ? '#f97316' : '#ef4444'; }
+function aiValueBarPct(v) { return Math.max(2, Math.min(100, ((v + 1.2) / 2.7) * 100)); }
+function qualityColor(v) { return v >= 50 ? '#22c55e' : v >= 35 ? '#eab308' : '#f97316'; }
+
+function qiHtml(m) {
+  const qi = m.quality_index != null
+    ? `<div class="qi-badge"><span class="qi-src">AA</span><span class="qi-val" style="color:${qualityColor(m.quality_index)}">${m.quality_index.toFixed(0)}</span></div>`
+    : '';
+  const elo = m.arena_elo != null
+    ? `<div class="qi-badge"><span class="qi-src">ELO</span><span class="qi-val" style="color:${qualityColor((m.arena_elo - 1100) / 8)}">${m.arena_elo}</span></div>`
+    : '';
+  return (qi || elo) ? `<div class="qi-wrap">${qi}${elo}</div>` : `<span class="qi-none">—</span>`;
+}
+
+function renderTable() {
+  const key = document.getElementById('sort-select').value;
+  if (key !== sortKey) { sortKey = key; }
+  const models = sortModels(filteredModels);
+  const tbody = document.getElementById('model-tbody');
+  if (!models.length) { tbody.innerHTML = '<tr><td colspan="9" class="loading">No models match.</td></tr>'; return; }
+
+  tbody.innerHTML = models.map(m => {
+    const color = providerColors[m.provider] || '#6366f1';
+    const latClass = latencyClass(m.display_latency_ms);
+    const latEmoji = { excellent:'🟢', good:'🟡', fair:'🟠', poor:'🔴' }[latClass];
+    const euBadge = m.has_eu_endpoint ? '<span title="EU endpoint" style="color:#22c55e;font-size:11px">🇪🇺</span>' : '';
+    const newBadge = m.is_new ? '<span class="tag new-badge">NEW</span>' : '';
+    const tags = m.categories.map(c => `<span class="tag">${c}</span>`).join('');
+    const col = aiValueColor(m.ai_value_score);
+    const scoreBar = `<div>
+      <div class="score-bar-wrap">
+        <div class="score-bar-bg"><div class="score-bar-fill" style="width:${aiValueBarPct(m.ai_value_score)}%;background:${col}"></div></div>
+        <span class="score-num" style="color:${col}">${m.ai_value_score.toFixed(2)}</span>
+      </div>
+      <div class="score-sub">${m.intel_per_dollar.toFixed(1)} pts / $</div>
+    </div>`;
+
+    return `<tr onclick="openModal('${m.id}')" style="cursor:pointer">
+      <td><span class="provider-dot" style="background:${color}"></span><span style="font-weight:500">${m.provider}</span> ${euBadge}</td>
+      <td>
+        <div class="model-name">${m.model} ${newBadge}</div>
+        <div class="model-id">${m.model_id}</div>
+        <div style="margin-top:4px">${tags}</div>
+      </td>
+      <td class="price-cell"><span class="price-in">$${m.input_usd_per_1m.toFixed(3)}</span></td>
+      <td class="price-cell"><span class="price-out">$${m.output_usd_per_1m.toFixed(2)}</span></td>
+      <td class="hide-mobile ctx">${m.context_window_k}k</td>
+      <td><span class="latency ${latClass}">${latEmoji} ~${m.display_latency_ms}ms</span></td>
+      <td class="hide-lg">${qiHtml(m)}</td>
+      <td>${scoreBar}</td>
+      <td class="hide-mobile" onclick="event.stopPropagation()">
+        <a class="link-btn" href="${m.pricing_url}" target="_blank">💰 Price</a>
+        <a class="link-btn" href="${m.docs_url}" target="_blank">📄 Docs</a>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function mathPanelHtml(m) {
+  const [inR, outR] = m.workload_ratio.split(':').map(Number);
+  const blendExpr = `(${inR}×$${m.input_usd_per_1m.toFixed(3)} + ${outR}×$${m.output_usd_per_1m.toFixed(3)}) / ${inR + outR}`;
+  const intelExpr = `${m.quality_index.toFixed(1)} / $${m.blended_cost_usd_per_1m.toFixed(4)}`;
+  const knee = m.latency_knee_ms;
+  const shift = knee / 4;
+  const scoringMs = m.scoring_latency_ms != null ? m.scoring_latency_ms : m.effective_latency_ms;
+  const latExpr = `log₁₀((${scoringMs} + ${shift.toFixed(1)}) / (${knee} + ${shift.toFixed(1)}))`;
+  const latLbl  = m.latency_penalty < 0 ? 'Latency bonus' : 'Latency penalty';
+  const latSign = m.latency_penalty < 0 ? '+' : '−';
+  const latMag  = Math.abs(m.latency_penalty).toFixed(3);
+  const logIntel = Math.log10(Math.max(m.intel_per_dollar, 0.01));
+  const cityTag = `${cityLabel(m._city)} ${cityFlag(m._city)}`;
+  const regionTag = m.canonical_region === 'multi' ? 'multi (nearest DC)' : m.canonical_region;
+  const tpsLabel = { 'aa-measured': 'AA-measured', 'class-prior': 'class-derived prior', 'n/a': 'no output-token generation' }[m.throughput_source] || 'class-derived prior';
+  const tpsCell = m.output_tokens_per_sec > 0
+    ? `${m.output_tokens_per_sec} tok/s <span class="expr">(${tpsLabel})</span>`
+    : `— <span class="expr">(${tpsLabel})</span>`;
+  const respSec = (m.typical_response_ms / 1000).toFixed(1);
+  return `
+    <div class="math-panel">
+      <h3>🔬 Show the Math — Workload: ${m._workload} (${m.workload_ratio}) · Sensitivity: ${m._sensitivity} (${knee}ms knee) · From ${cityTag}</h3>
+      <div class="math-row"><span class="lhs">Quality (AA Index)</span><span class="rhs">${m.quality_index.toFixed(1)} <span class="expr">(AA rebased 2026, top ~60)</span></span></div>
+      <div class="math-row"><span class="lhs">Blended $/1M</span><span class="rhs">$${m.blended_cost_usd_per_1m.toFixed(4)} <span class="expr">= ${blendExpr}</span></span></div>
+      <div class="math-row"><span class="lhs">Intel per $</span><span class="rhs">${m.intel_per_dollar.toFixed(2)} <span class="expr">= ${intelExpr}</span></span></div>
+      <div class="math-row"><span class="lhs">log₁₀(Intel per $)</span><span class="rhs">${logIntel.toFixed(3)}</span></div>
+      <div class="math-row"><span class="lhs">Inference TTFT</span><span class="rhs">${m.ttft_ms} ms <span class="expr">(pure model)</span></span></div>
+      <div class="math-row"><span class="lhs">Network RTT</span><span class="rhs">+${m.network_rtt_ms} ms <span class="expr">(${cityTag} → ${regionTag})</span></span></div>
+      <div class="math-row"><span class="lhs">Effective latency</span><span class="rhs">${m.effective_latency_ms} ms <span class="expr">= TTFT + RTT</span></span></div>
+      <div class="math-row"><span class="lhs">Throughput</span><span class="rhs">${tpsCell}</span></div>
+      <div class="math-row"><span class="lhs">Typical response (${m._workload})</span><span class="rhs">${respSec}s <span class="expr">= TTFT + RTT + output_tokens / tok-s</span></span></div>
+      <div class="math-row"><span class="lhs">Scoring latency</span><span class="rhs">${scoringMs} ms <span class="expr">= effective + ${(m.latency_alpha ?? 0).toFixed(2)}·gen_time (${m.gen_latency_contribution_ms ?? 0} ms)</span></span></div>
+      <div class="math-row"><span class="lhs">${latLbl}</span><span class="rhs">${latSign}${latMag} <span class="expr">= ${latExpr}</span></span></div>
+      <div class="math-row"><span class="lhs">AI Value</span><span class="rhs" style="color:${aiValueColor(m.ai_value_score)}">${m.ai_value_score.toFixed(3)}</span></div>
+    </div>`;
+}
+
+async function openModal(modelId) {
+  const m = allModels.find(x => x.id === modelId);
+  if (!m) return;
+  const color = providerColors[m.provider] || '#6366f1';
+  const latLabel = { excellent:'🟢 Excellent', good:'🟡 Good', fair:'🟠 Fair', poor:'🔴 Poor' }[latencyClass(m.display_latency_ms)];
+  const newBadge = m.is_new ? ' <span class="tag new-badge">NEW</span>' : '';
+  const aaHtml = m.aa_index != null
+    ? `<span style="color:${qualityColor(m.aa_index)};font-size:20px;font-weight:700">${m.aa_index}</span><span style="font-size:12px;color:var(--muted)"> AA Index</span>
+       <div style="font-size:11px;color:var(--muted);margin-top:3px"><a href="https://artificialanalysis.ai/models" target="_blank" style="color:var(--accent2);text-decoration:none">artificialanalysis.ai</a></div>`
+    : '<span style="color:var(--muted);font-size:14px">Not yet indexed — using manual quality</span>';
+  const eloHtml = m.arena_elo != null
+    ? `<span style="color:${qualityColor((m.arena_elo - 1100) / 8)};font-size:20px;font-weight:700">${m.arena_elo}</span>
+       <div style="font-size:11px;color:var(--muted);margin-top:3px"><a href="https://lmarena.ai" target="_blank" style="color:var(--accent2);text-decoration:none">lmarena.ai</a></div>`
+    : '<span style="color:var(--muted);font-size:14px">Not benchmarked</span>';
+  const aiCol = aiValueColor(m.ai_value_score);
+
+  document.getElementById('modal-inner').innerHTML = `
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
+      <span style="width:14px;height:14px;border-radius:50%;background:${color};display:inline-block"></span>
+      <h2>${m.model}${newBadge}</h2>
+    </div>
+    <div class="provider-sub">${m.provider} · <code style="font-size:12px;color:var(--muted)">${m.model_id}</code></div>
+    <div class="modal-grid">
+      <div class="modal-stat"><div class="lbl">Input Price</div><div class="val" style="color:#86efac">$${m.input_usd_per_1m.toFixed(4)}<span style="font-size:12px;color:var(--muted)"> /1M</span></div></div>
+      <div class="modal-stat"><div class="lbl">Output Price</div><div class="val" style="color:#fca5a5">$${m.output_usd_per_1m.toFixed(4)}<span style="font-size:12px;color:var(--muted)"> /1M</span></div></div>
+      <div class="modal-stat"><div class="lbl">Blended Cost (${m.workload_ratio})</div><div class="val">$${m.blended_cost_usd_per_1m.toFixed(4)}<span style="font-size:12px;color:var(--muted)"> /1M</span></div></div>
+      <div class="modal-stat"><div class="lbl">Intelligence per $</div><div class="val">${m.intel_per_dollar.toFixed(2)}<span style="font-size:12px;color:var(--muted)"> pts/$</span></div></div>
+      <div class="modal-stat"><div class="lbl">AA Intelligence Index</div><div class="val">${aaHtml}</div></div>
+      <div class="modal-stat"><div class="lbl">Arena ELO (display only)</div><div class="val">${eloHtml}</div></div>
+      <div class="modal-stat"><div class="lbl">AI Value Score</div><div class="val" style="color:${aiCol}">${m.ai_value_score.toFixed(3)}<span style="font-size:12px;color:var(--muted)"> (log₁₀)</span></div></div>
+      <div class="modal-stat"><div class="lbl">Latency from ${cityLabel(m._city)} ${cityFlag(m._city)}</div><div class="val" style="font-size:14px">${latLabel}<br><span style="font-size:12px;color:var(--muted)">TTFT ${m.ttft_ms}ms + RTT ${m.network_rtt_ms}ms = ~${m.effective_latency_ms}ms<br>${m.latency_penalty < 0 ? 'bonus +' : 'penalty −'}${Math.abs(m.latency_penalty).toFixed(3)}</span></div></div>
+      <div class="modal-stat"><div class="lbl">Throughput / Response</div><div class="val" style="font-size:14px">${m.output_tokens_per_sec > 0 ? `${m.output_tokens_per_sec} tok/s` : '—'}<br><span style="font-size:12px;color:var(--muted)">typical ${m._workload}: ${(m.typical_response_ms/1000).toFixed(1)}s</span></div></div>
+      <div class="modal-stat"><div class="lbl">Context Window</div><div class="val">${m.context_window_k}k</div></div>
+      <div class="modal-stat"><div class="lbl">EU Endpoint</div><div class="val" style="font-size:14px">${m.has_eu_endpoint ? '✅ Yes — GDPR-friendly' : '❌ No (US/Asia only)'}</div></div>
+    </div>
+    <div class="notes-box">📝 ${m.notes}</div>
+    ${mathPanelHtml(m)}
+    <div class="links-row" style="margin-top:20px">
+      <a href="${m.pricing_url}" target="_blank">💰 Pricing Page</a>
+      <a href="${m.docs_url}" target="_blank" class="secondary">📄 API Docs</a>
+    </div>
+    <div class="chart-section"><h3>Price History</h3><canvas id="chart-${m.id}" height="80"></canvas></div>
+  `;
+  document.getElementById('modal-overlay').classList.add('open');
+  loadHistory(m.id);
+}
+
+async function loadHistory(modelId) {
+  const data = await fetch(`/api/history/${modelId}`).then(r => r.json());
+  const canvas = document.getElementById(`chart-${modelId}`);
+  if (!canvas) return;
+  if (!data.history.length) { canvas.style.display='none'; canvas.insertAdjacentHTML('afterend','<p style="color:var(--muted);font-size:12px">No history yet — refreshes every 6h.</p>'); return; }
+  const labels = data.history.map(h => h.recorded_at.slice(0,10)).reverse();
+  new Chart(canvas, {
+    type: 'line',
+    data: { labels, datasets: [
+      { label: 'Input $/1M', data: data.history.map(h=>h.input_usd_per_1m).reverse(), borderColor:'#86efac', backgroundColor:'#86efac22', tension:0.3 },
+      { label: 'Output $/1M', data: data.history.map(h=>h.output_usd_per_1m).reverse(), borderColor:'#fca5a5', backgroundColor:'#fca5a522', tension:0.3 },
+    ]},
+    options: {
+      plugins: { legend: { labels: { color:'#7c85a2', font:{size:11} } } },
+      scales: {
+        x: { ticks:{color:'#7c85a2',font:{size:10}}, grid:{color:'#2d3148'} },
+        y: { ticks:{color:'#7c85a2',font:{size:10}}, grid:{color:'#2d3148'} },
+      }
+    }
+  });
+}
+
+function closeModal(e) { if (e.target === document.getElementById('modal-overlay')) closeModalDirect(); }
+function closeModalDirect() { document.getElementById('modal-overlay').classList.remove('open'); document.getElementById('modal-inner').innerHTML = ''; }
+async function manualRefresh() { document.getElementById('nav-updated').textContent='Refreshing…'; await fetch('/api/refresh',{method:'POST'}); await boot(); }
+document.addEventListener('keydown', e => { if (e.key==='Escape') closeModalDirect(); });
+boot();
+</script>
+</body>
+</html>

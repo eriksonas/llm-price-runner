@@ -1,0 +1,16 @@
+# Use this on Hostinger VPS if you want Nginx as a reverse proxy
+# (e.g. running alongside Dify on the same host)
+#
+# Usage: docker compose -f docker-compose.yml -f docker-compose.nginx.yml up -d
+
+services:
+  nginx:
+    image: nginx:alpine
+    container_name: llm-price-nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - llm-price-runner
+    restart: unless-stopped
