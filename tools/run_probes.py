@@ -4,6 +4,12 @@ canonical region hubs, then write median RTTs to app/data/rtt_measured.json.
 The dashboard's app/data/geo.py prefers these measured numbers over its
 haversine estimate on a per-(city, region) basis, falling back when missing.
 
+Caveat: Atlas only offers ICMP for ping measurements. Targets that
+firewall ICMP (some cloud endpoints) will return no RTT for those probes;
+the city entry will simply lack that region and the dashboard falls back
+to haversine. To investigate a missing region, run with --city <id>
+--region <key> and inspect the per-probe summary.
+
 Usage:
     export RIPE_ATLAS_KEY=...                     # scope: create measurement
     python -m tools.run_probes --dry              # show what would run, estimate credits
@@ -18,8 +24,8 @@ import os
 import sys
 import time
 from datetime import datetime, timezone
+from math import asin, cos, radians, sin, sqrt
 from pathlib import Path
-from statistics import median
 
 import httpx
 from dotenv import load_dotenv
@@ -35,9 +41,16 @@ API = "https://atlas.ripe.net/api/v2"
 PROBES_PER_CITY = 3
 PACKETS = 3
 SEARCH_RADIUS_KM = 500
-CREDIT_COST_PER_PROBE = 10  # ICMP ping: 10 credits per probe-measurement
+CREDIT_COST_PER_PROBE = 10  # ICMP ping: 10 credits per probe-result
 POLL_INTERVAL_S = 15
 POLL_TIMEOUT_S = 300
+
+# Transient-error retry budget for any single Atlas API call. The Atlas
+# API throws occasional 5xx during high traffic; a tiny backoff prevents
+# a one-shot blip from aborting a run mid-flight (credits already spent
+# on launched measurements would otherwise be wasted).
+RETRY_MAX_ATTEMPTS = 4
+RETRY_BACKOFF_S = (1, 3, 8)  # waited between attempts 1→2, 2→3, 3→4
 
 # One representative hostname per canonical region. AWS regional API endpoints
 # accept TCP:443 and (mostly) respond to ICMP. CN endpoints are best-effort —
@@ -56,16 +69,50 @@ TARGETS = {
 OUTPUT_PATH = ROOT / "app" / "data" / "rtt_measured.json"
 
 
-# ── Atlas API helpers ────────────────────────────────────────────────────────
+# ── Helpers ──────────────────────────────────────────────────────────────────
 
 def _auth_headers(key: str) -> dict:
     return {"Authorization": f"Key {key}", "Content-Type": "application/json"}
 
 
-def find_probes_near(client: httpx.Client, city_id: str, city: dict, n: int) -> list[int]:
-    """Return up to n connected public probe IDs near the city."""
-    r = client.get(
-        f"{API}/probes/",
+def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    phi1, phi2 = radians(lat1), radians(lat2)
+    dphi = radians(lat2 - lat1)
+    dl = radians(lon2 - lon1)
+    a = sin(dphi / 2) ** 2 + cos(phi1) * cos(phi2) * sin(dl / 2) ** 2
+    return 2 * 6371.0 * asin(sqrt(a))
+
+
+def _request_with_retry(method: str, client: httpx.Client, url: str, **kwargs) -> httpx.Response:
+    """Issue an HTTP request with retry on transient errors.
+
+    Retries 5xx, 429, and network exceptions; surfaces 4xx (other than
+    429) immediately since those are caller bugs, not transient blips.
+    """
+    last_exc = None
+    for attempt in range(RETRY_MAX_ATTEMPTS):
+        try:
+            r = client.request(method, url, **kwargs)
+        except (httpx.RequestError, httpx.TransportError) as e:
+            last_exc = e
+            r = None
+        else:
+            if r.status_code < 500 and r.status_code != 429:
+                return r
+            last_exc = RuntimeError(f"HTTP {r.status_code} from {url}: {r.text[:200]}")
+        if attempt + 1 < RETRY_MAX_ATTEMPTS:
+            wait = RETRY_BACKOFF_S[min(attempt, len(RETRY_BACKOFF_S) - 1)]
+            print(f"  retry in {wait}s: {last_exc}")
+            time.sleep(wait)
+    raise last_exc if last_exc else RuntimeError(f"All {RETRY_MAX_ATTEMPTS} attempts failed for {url}")
+
+
+# ── Atlas API helpers ────────────────────────────────────────────────────────
+
+def find_probes_near(client: httpx.Client, city_id: str, city: dict, n: int) -> list[tuple[int, float]]:
+    """Return up to n connected public (probe_id, distance_km) pairs near the city."""
+    r = _request_with_retry(
+        "GET", client, f"{API}/probes/",
         params={
             "radius": f"{city['lat']},{city['lon']}:{SEARCH_RADIUS_KM}",
             "status_name": "Connected",
@@ -75,21 +122,15 @@ def find_probes_near(client: httpx.Client, city_id: str, city: dict, n: int) -> 
     )
     r.raise_for_status()
     results = r.json().get("results", [])
-    # Results aren't strictly distance-ordered; sort by haversine.
-    from math import radians, sin, cos, asin, sqrt
 
     def _dist(p):
         lat, lon = p.get("latitude"), p.get("longitude")
         if lat is None or lon is None:
             return 1e9
-        phi1, phi2 = radians(city["lat"]), radians(lat)
-        dphi = radians(lat - city["lat"])
-        dl = radians(lon - city["lon"])
-        a = sin(dphi / 2) ** 2 + cos(phi1) * cos(phi2) * sin(dl / 2) ** 2
-        return 2 * 6371.0 * asin(sqrt(a))
+        return _haversine_km(city["lat"], city["lon"], lat, lon)
 
-    results.sort(key=_dist)
-    return [p["id"] for p in results[:n]]
+    sorted_probes = sorted(results, key=_dist)
+    return [(p["id"], _dist(p)) for p in sorted_probes[:n]]
 
 
 def create_measurement(client: httpx.Client, target: str, probe_ids: list[int], description: str) -> int:
@@ -108,14 +149,14 @@ def create_measurement(client: httpx.Client, target: str, probe_ids: list[int], 
         }],
         "is_oneoff": True,
     }
-    r = client.post(f"{API}/measurements/", json=body)
+    r = _request_with_retry("POST", client, f"{API}/measurements/", json=body)
     if r.status_code >= 400:
         raise RuntimeError(f"Atlas create_measurement failed {r.status_code}: {r.text}")
     return r.json()["measurements"][0]
 
 
 def fetch_results(client: httpx.Client, measurement_id: int) -> list[dict]:
-    r = client.get(f"{API}/measurements/{measurement_id}/results/")
+    r = _request_with_retry("GET", client, f"{API}/measurements/{measurement_id}/results/")
     r.raise_for_status()
     return r.json()
 
@@ -135,9 +176,27 @@ def wait_for_results(client: httpx.Client, measurement_id: int, expected: int) -
 # ── Orchestration ────────────────────────────────────────────────────────────
 
 def probe_rtt_from_result(result: dict) -> float | None:
-    """Median RTT (ms) across successful pings in one probe result, or None."""
+    """Best (min) RTT (ms) across successful pings in one probe result, or None.
+
+    `min` is consistent with the city-level aggregation downstream and
+    is more stable than median when only 3 packets are sent (one high
+    outlier shifts a 3-packet median significantly).
+    """
     rtts = [p["rtt"] for p in result.get("result", []) if isinstance(p, dict) and "rtt" in p]
-    return median(rtts) if rtts else None
+    return min(rtts) if rtts else None
+
+
+def _atomic_write_json(path: Path, payload: dict) -> None:
+    """Write JSON to a temp file in the same dir, then os.replace().
+
+    Crash-resilient: a Ctrl-C or OOM mid-write leaves the original file
+    intact, which matters because the running dashboard reloads this
+    file on mtime change and a corrupted parse would zero out all
+    measured RTTs.
+    """
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(json.dumps(payload, indent=2))
+    os.replace(tmp, path)
 
 
 def main():
@@ -148,7 +207,7 @@ def main():
     parser.add_argument("--probes-per-city", type=int, default=PROBES_PER_CITY)
     args = parser.parse_args()
 
-    key = os.environ.get("RIPE_ATLAS_KEY")
+    key = (os.environ.get("RIPE_ATLAS_KEY") or "").strip()
     if not key and not args.dry:
         sys.exit("RIPE_ATLAS_KEY env var not set")
 
@@ -159,67 +218,75 @@ def main():
     if not targets:
         sys.exit(f"No matching region: {args.region}")
 
-    client = httpx.Client(
+    with httpx.Client(
         timeout=httpx.Timeout(30.0, read=60.0),
         headers=_auth_headers(key) if key else {},
-    )
+    ) as client:
+        # Step 1 — pick probes per city, recording distance for visibility.
+        print(f"Finding {args.probes_per_city} probes per city across {len(cities)} cities…")
+        city_probes: dict[str, list[int]] = {}
+        empty_cities: list[str] = []
+        for city_id, city in cities.items():
+            if args.dry and not key:
+                city_probes[city_id] = []  # unknown; cost estimate uses the requested count
+                continue
+            try:
+                probes_with_dist = find_probes_near(client, city_id, city, args.probes_per_city)
+            except Exception as e:
+                print(f"  {city_id}: probe lookup failed ({e})")
+                probes_with_dist = []
+            if probes_with_dist:
+                pretty = ", ".join(f"{pid} ({dist:.0f}km)" for pid, dist in probes_with_dist)
+                print(f"  {city_id:12s} → {pretty}")
+                city_probes[city_id] = [pid for pid, _ in probes_with_dist]
+            else:
+                print(f"  {city_id:12s} → (none found within {SEARCH_RADIUS_KM} km)")
+                city_probes[city_id] = []
+                empty_cities.append(city_id)
 
-    # Step 1 — pick probes per city
-    print(f"Finding {args.probes_per_city} probes per city across {len(cities)} cities…")
-    city_probes: dict[str, list[int]] = {}
-    for city_id, city in cities.items():
-        if args.dry and not key:
-            city_probes[city_id] = []  # unknown; cost estimate uses the requested count
-            continue
-        try:
-            probes = find_probes_near(client, city_id, city, args.probes_per_city)
-        except Exception as e:
-            print(f"  {city_id}: probe lookup failed ({e})")
-            probes = []
-        city_probes[city_id] = probes
-        print(f"  {city_id:12s} → probes {probes or '(none found)'}")
+        # Collect union of probe IDs (one measurement hits many probes at once).
+        all_probes = sorted({p for ps in city_probes.values() for p in ps})
+        if not all_probes and not args.dry:
+            sys.exit("No probes discovered — check Atlas API key or SEARCH_RADIUS_KM")
 
-    # Collect union of probe IDs (one measurement hits many probes at once).
-    all_probes = sorted({p for ps in city_probes.values() for p in ps})
-    if not all_probes and not args.dry:
-        sys.exit("No probes discovered — check Atlas API key or SEARCH_RADIUS_KM")
-
-    total_probe_measurements = len(all_probes) * len(targets) or (
-        args.probes_per_city * len(cities) * len(targets)
-    )
-    est_credits = total_probe_measurements * CREDIT_COST_PER_PROBE * PACKETS / PACKETS  # per probe
-    print(
-        f"\nPlanned: {len(all_probes)} unique probes × {len(targets)} targets = "
-        f"{total_probe_measurements} probe-measurements · ~{est_credits:,.0f} credits"
-    )
-
-    if args.dry:
-        print("Dry run — exiting before creating measurements.")
-        return
-
-    # Step 2 — one measurement per target, all probes in one shot
-    measurement_ids: dict[str, int] = {}
-    for rkey, target in targets.items():
-        mid = create_measurement(
-            client, target, all_probes,
-            description=f"llm-price-runner {rkey} {datetime.now(timezone.utc).date().isoformat()}",
+        total_probe_measurements = len(all_probes) * len(targets) or (
+            args.probes_per_city * len(cities) * len(targets)
         )
-        measurement_ids[rkey] = mid
-        print(f"  created measurement {mid} → {rkey} ({target})")
+        est_credits = total_probe_measurements * CREDIT_COST_PER_PROBE
+        print(
+            f"\nPlanned: {len(all_probes)} unique probes × {len(targets)} targets = "
+            f"{total_probe_measurements} probe-measurements · ~{est_credits:,.0f} credits"
+        )
+        if empty_cities:
+            print(f"Cities with no probes nearby (will be omitted from output): {', '.join(empty_cities)}")
 
-    # Step 3 — poll results
-    all_results: dict[str, dict[int, float]] = {}  # rkey → {probe_id: rtt_ms}
-    for rkey, mid in measurement_ids.items():
-        print(f"Waiting for results of {mid} ({rkey})…")
-        raw = wait_for_results(client, mid, expected=len(all_probes))
-        per_probe: dict[int, float] = {}
-        for row in raw:
-            pid = row.get("prb_id")
-            rtt = probe_rtt_from_result(row)
-            if pid is not None and rtt is not None:
-                per_probe[pid] = rtt
-        print(f"  {rkey}: {len(per_probe)}/{len(all_probes)} probes returned RTT")
-        all_results[rkey] = per_probe
+        if args.dry:
+            print("Dry run — exiting before creating measurements.")
+            return
+
+        # Step 2 — one measurement per target, all probes in one shot.
+        measurement_ids: dict[str, int] = {}
+        for rkey, target in targets.items():
+            mid = create_measurement(
+                client, target, all_probes,
+                description=f"llm-price-runner {rkey} {datetime.now(timezone.utc).date().isoformat()}",
+            )
+            measurement_ids[rkey] = mid
+            print(f"  created measurement {mid} → {rkey} ({target})")
+
+        # Step 3 — poll results
+        all_results: dict[str, dict[int, float]] = {}  # rkey → {probe_id: rtt_ms}
+        for rkey, mid in measurement_ids.items():
+            print(f"Waiting for results of {mid} ({rkey})…")
+            raw = wait_for_results(client, mid, expected=len(all_probes))
+            per_probe: dict[int, float] = {}
+            for row in raw:
+                pid = row.get("prb_id")
+                rtt = probe_rtt_from_result(row)
+                if pid is not None and rtt is not None:
+                    per_probe[pid] = rtt
+            print(f"  {rkey}: {len(per_probe)}/{len(all_probes)} probes returned RTT")
+            all_results[rkey] = per_probe
 
     # Step 4 — aggregate per city (min across that city's probes; min reflects the
     # best achievable path, which is what we'd route over).
@@ -235,7 +302,15 @@ def main():
         if city_entry:
             rtts[city_id] = city_entry
 
-    # Step 5 — write alongside existing rtt_measured.json (if any)
+    if not rtts:
+        sys.exit(
+            "Refusing to write: every measurement returned zero RTTs. "
+            "Existing rtt_measured.json left intact. Investigate the Atlas measurement "
+            "summaries above (probable causes: ICMP-firewalled targets, all probes offline, "
+            "or an API-key scope problem)."
+        )
+
+    # Step 5 — merge with existing rtt_measured.json (if any) and atomically replace.
     existing: dict = {}
     if OUTPUT_PATH.exists():
         try:
@@ -246,15 +321,22 @@ def main():
     for city_id, data in rtts.items():
         merged.setdefault(city_id, {}).update(data)
 
+    # Preserve the full set of known targets across partial runs — union of the
+    # previous file's targets, this run's targets, and TARGETS itself.
+    saved_targets = {**existing.get("targets", {}), **targets}
+
     payload = {
         "last_updated": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "source": "ripe-atlas-icmp-ping",
         "probes_per_city": args.probes_per_city,
-        "targets": {k: v for k, v in TARGETS.items() if k in targets or k in merged.get("_meta", {}).get("targets", {})},
+        "targets": saved_targets,
         "rtts": merged,
     }
-    OUTPUT_PATH.write_text(json.dumps(payload, indent=2))
-    print(f"\nWrote {OUTPUT_PATH.relative_to(ROOT)} ({len(merged)} cities)")
+    _atomic_write_json(OUTPUT_PATH, payload)
+    summary = f"\nWrote {OUTPUT_PATH.relative_to(ROOT)} ({len(merged)} cities)"
+    if empty_cities:
+        summary += f"; {len(empty_cities)} cities skipped (no probes): {', '.join(empty_cities)}"
+    print(summary)
 
 
 if __name__ == "__main__":
