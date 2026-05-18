@@ -35,7 +35,18 @@ and the label:
 - "traefik.docker.network=traefik"   # ← change to match
 ```
 
-## 3. Copy project to VPS
+## 3. Get the code on the VPS
+
+Clone from GitHub (preferred — versioned, only the diff transfers on update):
+
+```bash
+ssh root@69.62.127.135
+cd /opt
+git clone https://github.com/eriksonas/llm-price-runner.git
+cd llm-price-runner
+```
+
+Or `scp -r` from a local working tree if you're iterating without pushing:
 
 ```bash
 scp -r /path/to/llm_price_runner root@69.62.127.135:/opt/llm-price-runner
@@ -44,8 +55,6 @@ scp -r /path/to/llm_price_runner root@69.62.127.135:/opt/llm-price-runner
 ## 4. Build and start
 
 ```bash
-ssh root@69.62.127.135
-cd /opt/llm-price-runner
 docker compose up -d --build
 docker compose logs -f    # watch for startup + cert issuance
 ```
@@ -55,9 +64,38 @@ The app will be live at **https://models.agent-startup.com** once Let's Encrypt 
 ## 5. Verify
 
 ```bash
-curl -I https://models.agent-startup.com/api/meta
+curl -I https://models.agent-startup.com/healthz
 # Should return HTTP/2 200
 ```
+
+## Updating a running deployment
+
+```bash
+cd /opt/llm-price-runner
+git pull
+docker compose up -d --build    # rebuilds the image, recreates the container
+docker compose logs -f --tail=30
+```
+
+The named `price_data` volume survives, so the SQLite override + history
+table is preserved across deploys.
+
+### One-time chown if upgrading from a pre-non-root build
+
+The current Dockerfile runs as an unprivileged user (uid 1000). If your
+existing `price_data` volume was created by an older root-running
+container, the new container can't write to it and you'll see
+`sqlite3.OperationalError: attempt to write a readonly database` in the
+startup logs. Fix it once with a throwaway container:
+
+```bash
+docker compose down
+docker run --rm -v llm-price-runner_price_data:/data alpine chown -R 1000:1000 /data
+docker compose up -d
+```
+
+Fresh deploys don't need this — Docker preserves the Dockerfile's
+chown when creating a brand-new volume.
 
 ## Troubleshooting
 

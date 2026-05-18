@@ -298,28 +298,35 @@ def _match_arena_elo(model: dict, arena_data: dict):
     return arena_data.get(model["model"].lower())
 
 
-def apply_live_scores(models: list, aa_data: dict, aa_tps: dict, arena_data: dict) -> list:
+def apply_live_scores(models: list, aa_data: dict, aa_tps: dict, arena_data: dict) -> tuple[list, dict]:
     """
     Overwrite aa_index, aa_tps and arena_elo on each model with live-fetched
-    values where a match is found. Seeded values remain as fallback.
+    values where a match is found. Seeded values remain as fallback. Returns
+    the model list along with a count of how many entries each source
+    actually updated — useful for spotting silent upstream failures.
     """
+    counts = {"aa": 0, "aa_tps": 0, "arena": 0}
     for m in models:
         slug = AA_SLUGS.get(m["model_id"])
         if slug:
             if slug in aa_data:
                 m["aa_index"] = round(aa_data[slug], 1)
+                counts["aa"] += 1
             if slug in aa_tps:
                 m["aa_tps"] = int(round(aa_tps[slug]))
+                counts["aa_tps"] += 1
 
         elo = _match_arena_elo(m, arena_data)
         if elo is not None:
             m["arena_elo"] = int(elo)
-    return models
+            counts["arena"] += 1
+    return models, counts
 
 
-async def refresh_quality_indices(models: list) -> list:
+async def refresh_quality_indices(models: list) -> tuple[list, dict]:
     aa_data, aa_tps = await fetch_aa_index()
     arena_data = await fetch_arena_elo()
+    counts = {"aa": 0, "aa_tps": 0, "arena": 0}
     if aa_data or aa_tps or arena_data:
-        models = apply_live_scores(models, aa_data, aa_tps, arena_data)
-    return models
+        models, counts = apply_live_scores(models, aa_data, aa_tps, arena_data)
+    return models, counts

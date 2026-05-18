@@ -72,7 +72,7 @@ async def _refresh_models():
             if ov.get("notes"):
                 m["notes"] = ov["notes"]
 
-    models = await refresh_quality_indices(models)
+    models, fetch_counts = await refresh_quality_indices(models)
 
     for m in models:
         m["is_open_weight"] = is_open_weight(m)
@@ -84,7 +84,10 @@ async def _refresh_models():
         await record_prices(models)
     except Exception as e:
         logger.warning("Failed to record price snapshot: %s", e)
-    logger.info("Models refreshed: %d entries", len(models))
+    logger.info(
+        "Models refreshed: %d entries (live: aa=%d aa_tps=%d arena=%d)",
+        len(models), fetch_counts["aa"], fetch_counts["aa_tps"], fetch_counts["arena"],
+    )
 
 
 def _get_scored(workload: str, sensitivity: str, city: str) -> list:
