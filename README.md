@@ -174,5 +174,4 @@ tests/
 
 ## License
 
-Not yet licensed. Until a `LICENSE` file is added, default copyright
-applies — no rights granted. Open an issue if you'd like to use this.
+MIT — see [LICENSE](./LICENSE).
