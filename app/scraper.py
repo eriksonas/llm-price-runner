@@ -57,10 +57,10 @@ AA_SLUGS = {
     "claude-opus-4-7":                  "claude-opus-4-7",
     "claude-opus-4-5":                  "claude-opus-4-5",
     "claude-sonnet-4-6":                "claude-sonnet-4-6",
-    "claude-sonnet-4-5":                "claude-sonnet-4-5",
+    "claude-sonnet-4-5":                "claude-4-5-sonnet",
     "claude-3-7-sonnet-20250219":       "claude-3-7-sonnet",
-    "claude-3-5-sonnet-20241022":       "claude-3-5-sonnet",
-    "claude-haiku-4-5":                 "claude-haiku-4",
+    "claude-3-5-sonnet-20241022":       "claude-35-sonnet",
+    "claude-haiku-4-5":                 "claude-4-5-haiku",
     "claude-3-5-haiku-20241022":        "claude-3-5-haiku",
     "claude-3-opus-20240229":           "claude-3-opus",
     "gemini-3.1-pro-preview":           "gemini-3-1-pro",
@@ -132,8 +132,8 @@ AA_SLUGS = {
     "meta-llama/Llama-4-Behemoth":      "llama-4-behemoth",
     # OpenRouter passthrough slugs — map to the underlying AA model slug.
     "anthropic/claude-opus-4.6":        "claude-opus-4-6",
-    "anthropic/claude-sonnet-4.5":      "claude-sonnet-4-5",
-    "anthropic/claude-haiku-4.5":       "claude-haiku-4",
+    "anthropic/claude-sonnet-4.5":      "claude-4-5-sonnet",
+    "anthropic/claude-haiku-4.5":       "claude-4-5-haiku",
     "openai/gpt-5":                     "gpt-5",
     "openai/gpt-5-nano":                "gpt-5-nano",
     "openai/gpt-4.1":                   "gpt-4-1",
@@ -268,7 +268,10 @@ async def fetch_aa_index() -> tuple[dict, dict]:
                 scores: dict = {}
                 tps: dict = {}
                 for item in rows:
-                    slug = item.get("id") or item.get("slug") or ""
+                    # Prefer the human-readable `slug` (e.g. "gpt-5-4") as
+                    # the dict key — AA's `id` is a UUID and AA_SLUGS in
+                    # this module is written against slug values.
+                    slug = item.get("slug") or item.get("id") or ""
                     if not slug:
                         continue
                     score = _extract_aa_score(item)
