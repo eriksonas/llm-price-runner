@@ -23,7 +23,7 @@ from app.scoring import (
     quality_index_0_100,
     LATENCY_KNEE,
 )
-from app.scraper import _match_arena_elo, ARENA_NAMES
+from app.scraper import _arena_normalize, _match_arena_elo, ARENA_NAMES
 
 
 # ── Sample models: pick a deliberate spread ──────────────────────────────────
@@ -203,27 +203,48 @@ class TestLatencyPenalty:
 
 
 class TestArenaMatch:
-    def test_explicit_map_wins(self):
-        arena = {"gpt-4o-2024-08-06": 1305.0}
-        m = {"id": "openai-gpt-4o", "model": "GPT-4o"}
-        assert _match_arena_elo(m, arena) == 1305.0
+    """Arena data arrives from fetch_arena_elo() with keys already
+    normalized via _arena_normalize. These tests mirror that contract."""
+
+    def test_match_via_normalized_display_name(self):
+        arena = {"claude-opus-4-6-thinking": 1502.0}
+        m = {"id": "anthropic-claude-opus-4-6", "model": "Claude Opus 4.6 Thinking", "model_id": "claude-opus-4-6-thinking"}
+        assert _match_arena_elo(m, arena) == 1502.0
+
+    def test_match_via_model_id_when_display_name_differs(self):
+        arena = {"gpt-4-1": 1413.0}
+        m = {"id": "openai-gpt-4-1", "model": "GPT-4.1", "model_id": "gpt-4.1"}
+        # Display "GPT-4.1" normalizes to "gpt-4-1", which is the arena key.
+        assert _match_arena_elo(m, arena) == 1413.0
 
     def test_no_substring_collision(self):
         # The old bug: 'gpt-4' substring would match 'gpt-4o' for the gpt-4.1 model.
         arena = {
-            "gpt-4o-2024-08-06":     1305.0,
-            "gpt-4.1-2025-04-14":    1413.0,
+            _arena_normalize("gpt-4o-2024-08-06"):  1305.0,
+            _arena_normalize("gpt-4.1-2025-04-14"): 1413.0,
         }
-        m41 = {"id": "openai-gpt-4-1", "model": "GPT-4.1"}
+        m41 = {"id": "openai-gpt-4-1", "model": "gpt-4.1-2025-04-14", "model_id": "gpt-4.1"}
         assert _match_arena_elo(m41, arena) == 1413.0  # not 1305
 
+    def test_explicit_override_wins(self):
+        # An explicit override in ARENA_NAMES beats the normalized fallback.
+        from app.scraper import ARENA_NAMES as overrides
+        overrides["test-shadow-id"] = "shadow-model"
+        try:
+            arena = {"shadow-model": 9999.0, "fallback-name": 1.0}
+            m = {"id": "test-shadow-id", "model": "Fallback Name", "model_id": "fallback-name"}
+            assert _match_arena_elo(m, arena) == 9999.0
+        finally:
+            overrides.pop("test-shadow-id", None)
+
     def test_unmapped_returns_none(self):
-        arena = {"gpt-4o-2024-08-06": 1305.0}
-        m = {"id": "totally-new-model", "model": "Totally New"}
+        arena = {"claude-opus-4-6-thinking": 1502.0}
+        m = {"id": "totally-new-model", "model": "Totally New", "model_id": "totally-new"}
         assert _match_arena_elo(m, arena) is None
 
-    def test_arena_names_keys_are_strings(self):
-        # Catch typos in the explicit map at test time.
-        for key, val in ARENA_NAMES.items():
-            assert isinstance(key, str) and key
-            assert isinstance(val, str) and val
+    def test_normalize_collapses_separators(self):
+        # Spaces, dots, underscores, slashes, and runs of dashes all
+        # collapse to a single dash so equivalent names hash the same.
+        assert _arena_normalize("Claude Opus 4.6 Thinking") == "claude-opus-4-6-thinking"
+        assert _arena_normalize("claude_opus_4.6_thinking") == "claude-opus-4-6-thinking"
+        assert _arena_normalize("claude/opus--4.6--thinking") == "claude-opus-4-6-thinking"

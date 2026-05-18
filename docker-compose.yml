@@ -9,6 +9,10 @@ services:
     restart: unless-stopped
     environment:
       - TZ=Europe/Vilnius
+      # Sign up at https://artificialanalysis.ai for a free API key
+      # (1000 req/day free tier). Define AA_API_KEY in .env next to
+      # this compose file; leave blank to skip live AA refresh.
+      - AA_API_KEY=${AA_API_KEY:-}
     networks:
       - traefik-proxy
       - internal

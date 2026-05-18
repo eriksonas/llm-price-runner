@@ -21,6 +21,7 @@ post-hoc rescaling.
 ### Docker (recommended)
 
 ```bash
+cp .env.example .env       # then fill in AA_API_KEY
 docker compose up -d --build
 # dashboard at http://localhost:8080
 ```
@@ -28,6 +29,11 @@ docker compose up -d --build
 The compose file expects an external Traefik network for HTTPS termination
 in production; remove the `traefik-proxy` network and the labels block for
 plain local use.
+
+`AA_API_KEY` is a free key from
+[artificialanalysis.ai](https://artificialanalysis.ai) (1000 req/day; we
+refresh 4×/day). Without it the app still runs, but ranks against the
+seeded snapshot in `app/data/providers.py` instead of live data.
 
 ### Local dev
 

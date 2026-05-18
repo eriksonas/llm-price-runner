@@ -1,15 +1,31 @@
 """
 Fetches quality index data from public leaderboards:
-  - Artificial Analysis Intelligence Index (artificialanalysis.ai)
-  - LMSYS Chatbot Arena ELO (lmarena.ai)
+  - Artificial Analysis Intelligence Index v4 (artificialanalysis.ai)
+      Path:    /api/v2/data/llms/models
+      Auth:    x-api-key header — free tier, sign up at
+               https://artificialanalysis.ai (1000 req/day, ample headroom
+               for our 4-per-day refresh schedule). Set AA_API_KEY env var.
+      Shape:   data[].id / .slug, .evaluations.artificial_analysis_
+               intelligence_index, .median_output_tokens_per_second.
+  - LMSYS Chatbot Arena ELO (rebranded to LMArena Jan 2026, public API
+    closed). We pull from a community-maintained daily snapshot:
+      Path:    https://api.wulong.dev/arena-ai-leaderboards/v1/leaderboard
+      Auth:    none
+      Source:  https://github.com/oolong-tea-2026/arena-ai-leaderboards
+      Shape:   models[].model (slug), .score (ELO), .vendor, .license.
 
-Falls back to seeded values in providers.py if fetching fails.
+Falls back to seeded values in providers.py if either fetch fails.
 """
 
 import logging
+import os
+
 import httpx
 
 logger = logging.getLogger(__name__)
+
+AA_API_URL = "https://artificialanalysis.ai/api/v2/data/llms/models"
+ARENA_API_URL = "https://api.wulong.dev/arena-ai-leaderboards/v1/leaderboard?name=text"
 
 # ── Model ID mappings ─────────────────────────────────────────────────────────
 # Maps our internal model_id → slug used by each leaderboard
@@ -167,79 +183,97 @@ AA_SLUGS = {
 }
 
 
-# Maps our catalogue `id` (slug) → exact lmarena.ai leaderboard model_name
-# (lowercased). Substring matching was previously used here, but it
-# silently mis-attributed scores across model families ("gpt-4" matching
-# both "gpt-4o" and "gpt-4.1"). Anything not in this map simply won't
-# receive a live Arena ELO — the seeded value in providers.py remains.
-ARENA_NAMES: dict = {
-    "openai-gpt-4-1":          "gpt-4.1-2025-04-14",
-    "openai-gpt-4-1-mini":     "gpt-4.1-mini-2025-04-14",
-    "openai-gpt-4-1-nano":     "gpt-4.1-nano-2025-04-14",
-    "openai-gpt-4o":           "gpt-4o-2024-08-06",
-    "openai-gpt-4o-mini":      "gpt-4o-mini-2024-07-18",
-    "openai-o1":               "o1-2024-12-17",
-    "openai-o1-mini":          "o1-mini",
-    "openai-o3":               "o3-2025-04-16",
-    "openai-o3-mini":          "o3-mini",
-    "openai-o4-mini":          "o4-mini-2025-04-16",
-}
+# Override map: catalogue `id` → Arena leaderboard slug, used only when
+# the normalize-and-match fallback in _match_arena_elo fails to find the
+# right row (e.g. when Arena uses a model nickname our catalogue doesn't).
+# Values are run through _arena_normalize before lookup, so both formats
+# (dotted "gpt-4.1" or dashed "gpt-4-1") are accepted here. The new
+# wulong.dev feed uses slimmer slugs than the retired LMSYS endpoint, so
+# this map is intentionally near-empty — populate as you spot mismatches.
+ARENA_NAMES: dict = {}
 
 _aa_cache: dict = {}
 _aa_tps_cache: dict = {}
 _arena_cache: dict = {}
 
 
-# AA payload field names we'll accept for throughput. They have shifted
-# across catalogue versions; we try the most specific first.
-_AA_TPS_FIELDS = (
-    "output_tokens_per_second_median",
-    "median_output_tokens_per_second",
-    "output_tokens_per_second",
-    "median_throughput",
-    "throughput",
-)
+def _extract_aa_score(item: dict):
+    """Pull the AA Intelligence Index out of either the v4 shape or older
+    flat shape, so the scraper is resilient to schema drift between
+    Artificial Analysis catalogue versions."""
+    evals = item.get("evaluations") or {}
+    candidates = (
+        evals.get("artificial_analysis_intelligence_index"),
+        evals.get("intelligence_index"),
+        item.get("intelligence_index"),
+        item.get("quality_index"),
+    )
+    for v in candidates:
+        if v is not None:
+            try:
+                return float(v)
+            except (TypeError, ValueError):
+                continue
+    return None
 
 
 def _extract_aa_tps(item: dict):
-    for key in _AA_TPS_FIELDS:
-        val = item.get(key)
-        if val is not None:
-            try:
-                v = float(val)
-            except (TypeError, ValueError):
-                continue
-            if v > 0:
-                return v
+    """AA's median output tokens/sec. Same defensive multi-key lookup."""
+    candidates = (
+        item.get("median_output_tokens_per_second"),
+        item.get("output_tokens_per_second_median"),
+        item.get("output_tokens_per_second"),
+        (item.get("performance") or {}).get("median_output_tokens_per_second"),
+    )
+    for v in candidates:
+        if v is None:
+            continue
+        try:
+            f = float(v)
+        except (TypeError, ValueError):
+            continue
+        if f > 0:
+            return f
     return None
 
 
 async def fetch_aa_index() -> tuple[dict, dict]:
     """
-    Fetch Artificial Analysis Intelligence Index scores + measured throughput.
+    Fetch Artificial Analysis Intelligence Index + measured throughput.
 
-    Returns (score_by_slug, tps_by_slug). Either may be empty if AA didn't
-    expose that field for a given model, but the score is preserved
-    independently from throughput so a partial payload is still usable.
+    AA's free-tier API requires the AA_API_KEY env var (sign up at
+    https://artificialanalysis.ai). If the key is unset we skip the
+    fetch with a warning — seeded values keep ranks sensible until the
+    key is provided.
+
+    Returns (score_by_slug, tps_by_slug). Either may be empty if AA
+    didn't expose that field for a model.
     """
     global _aa_cache, _aa_tps_cache
+    api_key = os.environ.get("AA_API_KEY")
+    if not api_key:
+        logger.warning("AA Index: AA_API_KEY not set; skipping live fetch")
+        return _aa_cache, _aa_tps_cache
     try:
         async with httpx.AsyncClient(timeout=15) as client:
             resp = await client.get(
-                "https://artificialanalysis.ai/api/models",
-                headers={"Accept": "application/json"},
+                AA_API_URL,
+                headers={"Accept": "application/json", "x-api-key": api_key},
             )
             if resp.status_code == 200:
                 data = resp.json()
+                rows = data.get("data") if isinstance(data, dict) else data
+                if not isinstance(rows, list):
+                    rows = []
                 scores: dict = {}
                 tps: dict = {}
-                for item in data if isinstance(data, list) else data.get("models", []):
-                    slug = item.get("slug") or item.get("id") or ""
+                for item in rows:
+                    slug = item.get("id") or item.get("slug") or ""
                     if not slug:
                         continue
-                    score = item.get("intelligence_index") or item.get("quality_index")
+                    score = _extract_aa_score(item)
                     if score is not None:
-                        scores[slug] = float(score)
+                        scores[slug] = score
                     measured_tps = _extract_aa_tps(item)
                     if measured_tps is not None:
                         tps[slug] = measured_tps
@@ -248,6 +282,9 @@ async def fetch_aa_index() -> tuple[dict, dict]:
                     _aa_tps_cache = tps
                     logger.info("AA Index: fetched %d scores, %d throughput", len(scores), len(tps))
                     return scores, tps
+                logger.warning("AA Index: empty payload from %s", AA_API_URL)
+            else:
+                logger.warning("AA Index: HTTP %d from %s", resp.status_code, AA_API_URL)
     except Exception as e:
         logger.warning("AA Index fetch failed: %s", e)
     return _aa_cache, _aa_tps_cache
@@ -255,47 +292,86 @@ async def fetch_aa_index() -> tuple[dict, dict]:
 
 async def fetch_arena_elo() -> dict:
     """
-    Fetch LMSYS Chatbot Arena ELO scores.
-    Returns dict: {model_name: elo_score}
+    Fetch LMArena (formerly LMSYS Chatbot Arena) ELO scores.
+
+    LMArena's official API was removed when they rebranded in early 2026;
+    we now read from a community-maintained daily snapshot of the
+    official leaderboard. See module docstring for the source.
+
+    Returns dict: {normalized_model_name: elo_score}
     """
     global _arena_cache
     try:
-        async with httpx.AsyncClient(timeout=15) as client:
+        async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
             resp = await client.get(
-                "https://lmarena.ai/api/leaderboard",
+                ARENA_API_URL,
                 headers={"Accept": "application/json"},
             )
             if resp.status_code == 200:
                 data = resp.json()
-                result = {}
-                rows = data if isinstance(data, list) else data.get("leaderboard", data.get("data", []))
+                rows = (
+                    data.get("models")
+                    or data.get("leaderboard")
+                    or data.get("data")
+                    or (data if isinstance(data, list) else [])
+                )
+                result: dict = {}
                 for item in rows:
-                    name = item.get("model_name") or item.get("model") or ""
-                    elo = item.get("rating") or item.get("elo") or item.get("arena_score")
-                    if name and elo:
-                        result[name.lower()] = float(elo)
+                    name = item.get("model") or item.get("model_name") or ""
+                    elo = item.get("score") or item.get("rating") or item.get("elo") or item.get("arena_score")
+                    if not name or elo is None:
+                        continue
+                    try:
+                        result[_arena_normalize(name)] = float(elo)
+                    except (TypeError, ValueError):
+                        continue
                 if result:
                     _arena_cache = result
                     logger.info("Arena ELO: fetched %d scores", len(result))
                     return result
+                logger.warning("Arena ELO: empty payload from %s", ARENA_API_URL)
+            else:
+                logger.warning("Arena ELO: HTTP %d from %s", resp.status_code, ARENA_API_URL)
     except Exception as e:
         logger.warning("Arena ELO fetch failed: %s", e)
     return _arena_cache
 
 
+def _arena_normalize(name: str) -> str:
+    """Squash leaderboard names down to a single canonical form so
+    catalogue lookups don't fail on dot/dash/space variants. Example:
+        "Claude Opus 4.6 Thinking" → "claude-opus-4-6-thinking"
+        "claude-opus-4-6-thinking" → "claude-opus-4-6-thinking"
+    """
+    s = name.strip().lower()
+    for ch in (".", "_", " ", "/"):
+        s = s.replace(ch, "-")
+    while "--" in s:
+        s = s.replace("--", "-")
+    return s.strip("-")
+
+
 def _match_arena_elo(model: dict, arena_data: dict):
-    """Resolve a model to its Arena ELO via explicit map, then exact name match.
+    """Resolve a model to its Arena ELO via three increasingly-loose paths,
+    in order:
+
+    1. Explicit map (ARENA_NAMES) — wins outright when present.
+    2. Normalized exact match on the catalogue's display `model` name.
+    3. Normalized exact match on the catalogue's `model_id`.
 
     Substring matching is intentionally avoided — "gpt-4" would otherwise
-    collide with multiple gpt-4* variants and the first dict-iteration hit
-    would win at random.
+    collide with multiple gpt-4* variants and the first dict-iteration
+    hit would win at random.
     """
     explicit = ARENA_NAMES.get(model["id"])
     if explicit:
-        score = arena_data.get(explicit.lower())
+        score = arena_data.get(_arena_normalize(explicit))
         if score is not None:
             return score
-    return arena_data.get(model["model"].lower())
+    score = arena_data.get(_arena_normalize(model.get("model", "")))
+    if score is not None:
+        return score
+    return arena_data.get(_arena_normalize(model.get("model_id", "")))
 
 
 def apply_live_scores(models: list, aa_data: dict, aa_tps: dict, arena_data: dict) -> tuple[list, dict]:
