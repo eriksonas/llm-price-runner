@@ -1341,6 +1341,16 @@ PROVIDERS = [
         "notes": "Cheap Claude in EU. Ideal for high-volume tasks with GDPR requirements.", "is_new": False,
     },
     {
+        "id": "bedrock-nova-premier-us",
+        "provider": "AWS Bedrock", "model": "Nova Premier (us-east-1)", "model_id": "us.amazon.nova-premier-v1:0",
+        "categories": ["chat", "vision", "code", "reasoning"],
+        "input_usd_per_1m": 2.50, "output_usd_per_1m": 12.50, "context_window_k": 1000,
+        "primary_region": "us-east-1", "has_eu_endpoint": False, "eu_latency_ms": 175,
+        "quality_score": 9.2, "aa_index": 38.0, "arena_elo": None,
+        "pricing_url": "https://aws.amazon.com/bedrock/pricing/", "docs_url": "https://docs.aws.amazon.com/nova/",
+        "notes": "Top Nova tier — 1M context, multimodal, reasoning-capable. US cross-region inference (eu.* variant not yet GA).", "is_new": True,
+    },
+    {
         "id": "bedrock-nova-pro-eu",
         "provider": "AWS Bedrock", "model": "Nova Pro (eu-central-1)", "model_id": "eu.amazon.nova-pro-v1:0",
         "categories": ["chat", "vision", "code"],
@@ -1733,6 +1743,16 @@ PROVIDERS = [
     # Extra ~20–50ms latency over direct provider calls due to proxy hop.
     # ══════════════════════════════════════════════════════════════════════════
     {
+        "id": "openrouter-hermes-4-405b",
+        "provider": "OpenRouter", "model": "Hermes 4 405B (OpenRouter)", "model_id": "nousresearch/hermes-4-405b",
+        "categories": ["chat", "reasoning", "code"],
+        "input_usd_per_1m": 1.00, "output_usd_per_1m": 3.00, "context_window_k": 131,
+        "primary_region": "multi", "has_eu_endpoint": True, "eu_latency_ms": 60,
+        "quality_score": 8.5, "aa_index": 40.0, "arena_elo": None,
+        "pricing_url": "https://openrouter.ai/nousresearch/hermes-4-405b", "docs_url": "https://nousresearch.com",
+        "notes": "Nous Research flagship open fine-tune on Llama 3.1 405B base. Strong reasoning, low-restriction tuning. Open weights.", "is_new": True,
+    },
+    {
         "id": "openrouter-claude-opus-4-6",
         "provider": "OpenRouter", "model": "Claude Opus 4.6 (OpenRouter)", "model_id": "anthropic/claude-opus-4.6",
         "categories": ["chat", "reasoning", "code", "vision"],
@@ -1920,6 +1940,33 @@ PROVIDERS = [
     },
 
     # ══════════════════════════════════════════════════════════════════════════
+    # IBM watsonx (Granite)  —  https://www.ibm.com/products/watsonx-ai/pricing
+    # IBM's open-weight enterprise line, served via watsonx.ai. EU regions:
+    # Frankfurt (eu-de) and London (eu-gb). 30B pricing on watsonx is
+    # contract-tier; figures here are the publicly-listed equivalents.
+    # ══════════════════════════════════════════════════════════════════════════
+    {
+        "id": "ibm-granite-4-1-30b",
+        "provider": "IBM", "model": "Granite 4.1 30B Instruct", "model_id": "ibm/granite-4.1-30b-instruct",
+        "categories": ["chat", "code"],
+        "input_usd_per_1m": 0.20, "output_usd_per_1m": 0.40, "context_window_k": 131,
+        "primary_region": "eu-central", "has_eu_endpoint": True, "eu_latency_ms": 25,
+        "quality_score": 7.8, "aa_index": 30.0, "arena_elo": None,
+        "pricing_url": "https://www.ibm.com/products/watsonx-ai/pricing", "docs_url": "https://www.ibm.com/products/watsonx-ai/foundation-models",
+        "notes": "IBM's mid-tier Granite. Tool-use and RAG strong. EU via watsonx Frankfurt. Pricing approximate — verify per watsonx tier.", "is_new": True,
+    },
+    {
+        "id": "ibm-granite-4-1-8b",
+        "provider": "IBM", "model": "Granite 4.1 8B Instruct", "model_id": "ibm/granite-4.1-8b-instruct",
+        "categories": ["chat", "code"],
+        "input_usd_per_1m": 0.05, "output_usd_per_1m": 0.10, "context_window_k": 131,
+        "primary_region": "eu-central", "has_eu_endpoint": True, "eu_latency_ms": 25,
+        "quality_score": 6.8, "aa_index": 22.0, "arena_elo": None,
+        "pricing_url": "https://www.ibm.com/products/watsonx-ai/pricing", "docs_url": "https://www.ibm.com/products/watsonx-ai/foundation-models",
+        "notes": "Compact IBM Granite for routing/classification. EU via watsonx Frankfurt. Sub-cent blended pricing.", "is_new": True,
+    },
+
+    # ══════════════════════════════════════════════════════════════════════════
     # AI21 Labs (Jamba)  —  https://www.ai21.com
     # Hybrid SSM-Transformer (Mamba). Long-context specialist. EU endpoints
     # available via AWS Bedrock and Azure AI Foundry.
@@ -2031,6 +2078,7 @@ PROVIDER_COLORS = {
     "SiliconFlow":  "#22c55e",
     "Aleph Alpha":  "#e11d48",
     "AI21 Labs":    "#1e3a8a",
+    "IBM":          "#0f62fe",
     "ByteDance":    "#00b4d8",
     "Baidu":        "#2932e1",
 }

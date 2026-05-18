@@ -185,15 +185,25 @@ AA_SLUGS = {
     # ── ERNIE / Baidu ────────────────────────────────────────────────────────
     "baidu/ERNIE-4.5-300B-A47B":                              "ernie-4-5-300b-a47b",
 
-    # ── Amazon Nova (Bedrock EU) ─────────────────────────────────────────────
+    # ── Amazon Nova (Bedrock) ────────────────────────────────────────────────
+    "us.amazon.nova-premier-v1:0":                            "nova-premier",
     "eu.amazon.nova-pro-v1:0":                                "nova-pro",
     "eu.amazon.nova-lite-v1:0":                               "nova-lite",
     "eu.amazon.nova-micro-v1:0":                              "nova-micro",
+
+    # ── IBM Granite (watsonx) ────────────────────────────────────────────────
+    "ibm/granite-4.1-30b-instruct":                           "granite-4-1-30b",
+    "ibm/granite-4.1-8b-instruct":                            "granite-4-1-8b",
+
+    # ── AI21 Jamba (catalogue carries v2; AA still on v1.7 — use as proxy) ──
+    "jamba-2-large":                                          "jamba-1-7-large",
+    "jamba-2-mini":                                           "jamba-1-7-mini",
 
     # ── Mistral on Bedrock EU ────────────────────────────────────────────────
     "eu.mistral.mistral-large-2402-v1:0":                     "mistral-large-2407",
 
     # ── OpenRouter / Replicate passthroughs ──────────────────────────────────
+    "nousresearch/hermes-4-405b":                             "hermes-4-llama-3-1-405b",
     "anthropic/claude-opus-4.6":                              "claude-opus-4-6",
     "anthropic/claude-sonnet-4.5":                            "claude-4-5-sonnet",
     "anthropic/claude-haiku-4.5":                             "claude-4-5-haiku",
