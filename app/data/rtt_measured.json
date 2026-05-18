@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-05-15T15:03:17+00:00",
+  "last_updated": "2026-05-18T11:23:34+00:00",
   "source": "ripe-atlas-icmp-ping",
   "probes_per_city": 3,
   "targets": {
@@ -14,213 +14,213 @@
   },
   "rtts": {
     "vilnius": {
-      "us-east": 112,
+      "us-east": 108,
       "us-west": 165,
       "eu-west": 45,
-      "eu-central": 30,
-      "eu-north": 14,
-      "cn-east": 182,
+      "eu-central": 21,
+      "eu-north": 28,
+      "cn-east": 185,
       "cn-beijing": 182
     },
     "riga": {
-      "us-east": 92,
+      "us-east": 110,
       "us-west": 170,
       "eu-west": 37,
-      "eu-north": 5,
-      "cn-east": 210,
-      "eu-central": 21
+      "eu-north": 13,
+      "cn-east": 182,
+      "eu-central": 29
     },
     "warsaw": {
-      "us-east": 115,
+      "us-east": 104,
       "us-west": 177,
       "eu-west": 41,
-      "eu-north": 32,
-      "cn-east": 260,
-      "eu-central": 31
+      "eu-north": 27,
+      "cn-east": 173,
+      "eu-central": 17
     },
     "stockholm": {
-      "us-east": 95,
+      "us-east": 100,
       "us-west": 168,
       "eu-west": 34,
-      "eu-north": 17,
-      "cn-east": 178,
-      "eu-central": 25
+      "eu-north": 5,
+      "cn-east": 257,
+      "eu-central": 21
     },
     "berlin": {
       "us-east": 107,
       "us-west": 177,
       "eu-west": 30,
-      "eu-north": 18,
-      "cn-east": 187,
-      "eu-central": 31
+      "eu-north": 24,
+      "cn-east": 174,
+      "eu-central": 13
     },
     "frankfurt": {
-      "us-east": 105,
+      "us-east": 97,
       "us-west": 165,
       "eu-west": 40,
       "eu-north": 35,
-      "cn-east": 177,
-      "eu-central": 23
+      "cn-east": 173,
+      "eu-central": 10
     },
     "zurich": {
-      "us-east": 94,
+      "us-east": 89,
       "us-west": 162,
       "eu-west": 27,
-      "eu-north": 39,
-      "cn-east": 199,
-      "eu-central": 19
+      "eu-north": 30,
+      "cn-east": 162,
+      "eu-central": 9
     },
     "amsterdam": {
-      "us-east": 105,
+      "us-east": 98,
       "us-west": 165,
       "eu-west": 40,
-      "eu-north": 35,
-      "cn-east": 177,
-      "eu-central": 23
+      "eu-north": 47,
+      "cn-east": 178,
+      "eu-central": 30
     },
     "london": {
-      "us-east": 105,
+      "us-east": 75,
       "us-west": 165,
       "eu-west": 40,
-      "eu-north": 35,
-      "cn-east": 177,
-      "eu-central": 23
+      "eu-north": 27,
+      "cn-east": 157,
+      "eu-central": 13
     },
     "dublin": {
-      "us-east": 100,
+      "us-east": 90,
       "us-west": 160,
       "eu-west": 18,
-      "eu-north": 34,
-      "cn-east": 172,
-      "eu-central": 29
-    },
-    "paris": {
-      "us-east": 105,
-      "us-west": 165,
-      "eu-west": 40,
-      "eu-north": 35,
-      "cn-east": 177,
-      "eu-central": 23
-    },
-    "madrid": {
-      "us-east": 92,
-      "us-west": 152,
-      "eu-west": 32,
-      "eu-north": 46,
-      "cn-east": 154,
+      "eu-north": 39,
+      "cn-east": 167,
       "eu-central": 24
     },
+    "paris": {
+      "us-east": 80,
+      "us-west": 165,
+      "eu-west": 40,
+      "eu-north": 34,
+      "cn-east": 159,
+      "eu-central": 11
+    },
+    "madrid": {
+      "us-east": 98,
+      "us-west": 152,
+      "eu-west": 32,
+      "eu-north": 47,
+      "cn-east": 166,
+      "eu-central": 25
+    },
     "barcelona": {
-      "us-east": 94,
+      "us-east": 85,
       "us-west": 160,
       "eu-west": 32,
-      "eu-north": 43,
-      "cn-east": 257,
-      "eu-central": 22
+      "eu-north": 51,
+      "cn-east": 153,
+      "eu-central": 34
     },
     "milan": {
-      "us-east": 94,
+      "us-east": 91,
       "us-west": 162,
       "eu-west": 27,
-      "eu-north": 39,
-      "cn-east": 199,
-      "eu-central": 19
+      "eu-north": 33,
+      "cn-east": 169,
+      "eu-central": 12
     },
     "nyc": {
-      "us-east": 16,
+      "us-east": 6,
       "us-west": 80,
       "eu-west": 100,
-      "eu-north": 108,
-      "cn-east": 250,
-      "eu-central": 99
+      "eu-north": 92,
+      "cn-east": 224,
+      "eu-central": 81
     },
     "sanfrancisco": {
-      "us-east": 73,
+      "us-east": 64,
       "us-west": 31,
       "eu-west": 156,
-      "eu-north": 168,
-      "cn-east": 189,
-      "eu-central": 157
+      "eu-north": 155,
+      "cn-east": 179,
+      "eu-central": 139
     },
     "toronto": {
-      "us-east": 23,
+      "us-east": 18,
       "us-west": 60,
       "eu-west": 108,
-      "eu-north": 106,
-      "cn-east": 242,
-      "eu-central": 96
+      "eu-north": 105,
+      "cn-east": 232,
+      "eu-central": 91
     },
     "telaviv": {
-      "us-east": 130,
+      "us-east": 151,
       "us-west": 197,
       "eu-west": 76,
-      "eu-north": 75,
-      "cn-east": 176,
-      "eu-central": 57
+      "eu-north": 77,
+      "cn-east": 213,
+      "eu-central": 56
     },
     "dubai": {
-      "us-east": 176,
+      "us-east": 187,
       "us-west": 227,
       "eu-west": 131,
-      "eu-north": 135,
-      "cn-east": 79,
-      "eu-central": 115
+      "eu-north": 136,
+      "cn-east": 78,
+      "eu-central": 116
     },
     "singapore": {
-      "us-east": 225,
+      "us-east": 235,
       "us-west": 183,
       "eu-west": 171,
       "eu-north": 178,
-      "cn-east": 2,
-      "eu-central": 162
+      "cn-east": 1,
+      "eu-central": 154
     },
     "seoul": {
-      "us-east": 200,
+      "us-east": 194,
       "us-west": 140,
       "eu-west": 217,
-      "eu-north": 233,
-      "cn-east": 67,
-      "eu-central": 219
+      "eu-north": 284,
+      "cn-east": 91,
+      "eu-central": 277
     },
     "beijing": {
-      "us-east": 254,
+      "us-east": 205,
       "us-west": 194,
       "eu-west": 164,
-      "eu-north": 173,
-      "cn-east": 81,
-      "eu-central": 132
+      "eu-north": 170,
+      "cn-east": 76,
+      "eu-central": 145
     },
     "bangalore": {
-      "us-east": 250,
+      "us-east": 211,
       "us-west": 242,
       "eu-west": 143,
       "eu-north": 160,
       "cn-east": 39,
-      "eu-central": 139
+      "eu-central": 167
     },
     "sydney": {
-      "us-east": 194,
+      "us-east": 180,
       "us-west": 157,
       "eu-west": 261,
-      "eu-north": 268,
-      "cn-east": 93,
-      "eu-central": 243
+      "eu-north": 266,
+      "cn-east": 84,
+      "eu-central": 241
     },
     "saopaulo": {
-      "us-east": 119,
+      "us-east": 112,
       "us-west": 180,
       "eu-west": 185,
-      "eu-north": 212,
-      "cn-east": 316,
-      "eu-central": 196
+      "eu-north": 205,
+      "cn-east": 334,
+      "eu-central": 180
     },
     "tokyo": {
-      "us-east": 175,
+      "us-east": 169,
       "us-west": 138,
       "eu-west": 253,
-      "eu-central": 252,
-      "eu-north": 271,
-      "cn-east": 92
+      "eu-central": 238,
+      "eu-north": 255,
+      "cn-east": 67
     }
   }
 }
