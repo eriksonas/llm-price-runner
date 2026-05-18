@@ -18,6 +18,7 @@ Dockerfile
 requirements-dev.txt
 
 .venv/
+.venv-*/
 venv/
 .vscode/
 .idea/

@@ -119,6 +119,63 @@ If it doesn't, replace the HTTP router labels with:
 - "traefik.http.routers.llm-price-runner-http.middlewares=llm-https-redirect"
 ```
 
+## Weekly RTT refresh (cron)
+
+`tools/run_probes.py` measures RTT from RIPE Atlas probes near each user
+city to each region hub, then writes medians to
+`app/data/rtt_measured.json`. The running container picks up changes
+automatically via the read-only bind mount of `app/data/` declared in
+`docker-compose.yml` — no rebuild or restart needed.
+
+### One-time host setup
+
+```bash
+ssh root@69.62.127.135
+cd /opt/llm-price-runner
+
+# Install Python + venv on the VPS host (outside docker).
+apt update && apt install -y python3-venv python3-pip
+
+# Create a dedicated venv for the cron job. `.venv-probes/` is
+# gitignored (covered by `.venv*` in .gitignore).
+python3 -m venv .venv-probes
+.venv-probes/bin/pip install httpx python-dotenv
+
+# Make sure .env has RIPE_ATLAS_KEY (one-line file alongside compose):
+grep RIPE_ATLAS_KEY .env || echo "RIPE_ATLAS_KEY=atlas_key_here" >> .env
+
+# Sanity check: dry-run should print the credit estimate without
+# spending credits.
+.venv-probes/bin/python -m tools.run_probes --dry
+```
+
+### Cron entry
+
+Edit root's crontab (`crontab -e`) and add:
+
+```cron
+# Refresh measured RTTs weekly, Sunday 03:00 Europe/Vilnius (VPS TZ).
+0 3 * * 0 /opt/llm-price-runner/tools/cron_probes.sh
+```
+
+The wrapper script logs to `/var/log/probes.log` (creates it on first
+run). Tail it after the first scheduled run to confirm it worked:
+
+```bash
+tail -50 /var/log/probes.log
+```
+
+Each weekly run costs ~6 200 RIPE Atlas credits, well under typical
+account budgets. The script is idempotent and merges with the existing
+file, so a failed run never destroys data.
+
+### Verifying the bind mount works
+
+After the next refresh, the container should see the new RTTs without
+a restart. Check by hitting `/api/models?city=vilnius` and confirming
+the `network_rtt_ms` field for a few models matches what's currently in
+`app/data/rtt_measured.json` on the host.
+
 ## API Endpoints
 
 | Endpoint | Description |

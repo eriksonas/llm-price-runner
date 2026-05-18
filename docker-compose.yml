@@ -6,6 +6,14 @@ services:
       - "8080"
     volumes:
       - price_data:/data
+      # Read-only bind mount over the baked-in app/data so a host-side
+      # cron running tools/run_probes.py can refresh rtt_measured.json
+      # and the running container picks the change up via geo.py's
+      # mtime check on the next request. The directory contains the
+      # static providers.py + geo.py + __init__.py + rtt_measured.json,
+      # all coming from the same git clone — the bind mount keeps them
+      # in sync with whatever's on disk on the host.
+      - ./app/data:/app/app/data:ro
     restart: unless-stopped
     environment:
       - TZ=Europe/Vilnius
