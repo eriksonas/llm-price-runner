@@ -76,6 +76,13 @@ async def _refresh_models():
 
     for m in models:
         m["is_open_weight"] = is_open_weight(m)
+        # `apply_live_scores` set aa_index_source="live" on every entry it
+        # touched. Anything else with a non-null aa_index is using the
+        # seeded fallback from providers.py — tag it so the UI can show
+        # data provenance.
+        if "aa_index_source" not in m:
+            aa = m.get("aa_index")
+            m["aa_index_source"] = "seeded" if aa else "none"
 
     _raw_models = models
     _scored_cache.clear()

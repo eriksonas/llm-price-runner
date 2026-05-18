@@ -536,8 +536,12 @@ function aiValueBarPct(v) { return Math.max(2, Math.min(100, ((v + 1.2) / 2.7) *
 function qualityColor(v) { return v >= 50 ? '#22c55e' : v >= 35 ? '#eab308' : '#f97316'; }
 
 function qiHtml(m) {
+  // Dim AA badge slightly when the score is a seeded fallback (AA hasn't
+  // indexed this model). Tooltip explains. Live scores get full color.
+  const aaSrcLabel = m.aa_index_source === 'seeded' ? ' (seeded)' : '';
+  const aaStyle = m.aa_index_source === 'seeded' ? 'opacity:0.6' : '';
   const qi = m.quality_index != null
-    ? `<div class="qi-badge"><span class="qi-src">AA</span><span class="qi-val" style="color:${qualityColor(m.quality_index)}">${m.quality_index.toFixed(0)}</span></div>`
+    ? `<div class="qi-badge" title="AA Intelligence Index${aaSrcLabel}" style="${aaStyle}"><span class="qi-src">AA${m.aa_index_source === 'seeded' ? '·s' : ''}</span><span class="qi-val" style="color:${qualityColor(m.quality_index)}">${m.quality_index.toFixed(0)}</span></div>`
     : '';
   const elo = m.arena_elo != null
     ? `<div class="qi-badge"><span class="qi-src">ELO</span><span class="qi-val" style="color:${qualityColor((m.arena_elo - 1100) / 8)}">${m.arena_elo}</span></div>`
@@ -611,7 +615,7 @@ function mathPanelHtml(m) {
   return `
     <div class="math-panel">
       <h3>🔬 Show the Math — Workload: ${m._workload} (${m.workload_ratio}) · Sensitivity: ${m._sensitivity} (${knee}ms knee) · From ${cityTag}</h3>
-      <div class="math-row"><span class="lhs">Quality (AA Index)</span><span class="rhs">${m.quality_index.toFixed(1)} <span class="expr">(AA rebased 2026, top ~60)</span></span></div>
+      <div class="math-row"><span class="lhs">Quality (AA Index)</span><span class="rhs">${m.quality_index.toFixed(1)} <span class="expr">(${m.aa_index_source === 'seeded' ? 'seeded fallback — AA hasn\'t indexed this model' : m.aa_index_source === 'live' ? 'live from AA, top frontier ~60' : 'no AA score'})</span></span></div>
       <div class="math-row"><span class="lhs">Blended $/1M</span><span class="rhs">$${m.blended_cost_usd_per_1m.toFixed(4)} <span class="expr">= ${blendExpr}</span></span></div>
       <div class="math-row"><span class="lhs">Intel per $</span><span class="rhs">${m.intel_per_dollar.toFixed(2)} <span class="expr">= ${intelExpr}</span></span></div>
       <div class="math-row"><span class="lhs">log₁₀(Intel per $)</span><span class="rhs">${logIntel.toFixed(3)}</span></div>
@@ -632,8 +636,12 @@ async function openModal(modelId) {
   const color = providerColors[m.provider] || '#6366f1';
   const latLabel = { excellent:'🟢 Excellent', good:'🟡 Good', fair:'🟠 Fair', poor:'🔴 Poor' }[latencyClass(m.display_latency_ms)];
   const newBadge = m.is_new ? ' <span class="tag new-badge">NEW</span>' : '';
+  const aaSeeded = m.aa_index_source === 'seeded';
+  const aaProvenance = aaSeeded
+    ? '<span class="tag" title="AA hasn\'t indexed this model — score is a hand-curated estimate from app/data/providers.py" style="margin-left:6px;background:#2a2210;border-color:#fbbf2444;color:#fbbf24">seeded</span>'
+    : '<span class="tag" title="Score fetched live from Artificial Analysis on the last refresh" style="margin-left:6px;background:#14301a;border-color:#22c55e44;color:#4ade80">live</span>';
   const aaHtml = m.aa_index != null
-    ? `<span style="color:${qualityColor(m.aa_index)};font-size:20px;font-weight:700">${m.aa_index}</span><span style="font-size:12px;color:var(--muted)"> AA Index</span>
+    ? `<span style="color:${qualityColor(m.aa_index)};font-size:20px;font-weight:700">${m.aa_index}</span><span style="font-size:12px;color:var(--muted)"> AA Index</span>${aaProvenance}
        <div style="font-size:11px;color:var(--muted);margin-top:3px"><a href="https://artificialanalysis.ai/models" target="_blank" style="color:var(--accent2);text-decoration:none">artificialanalysis.ai</a></div>`
     : '<span style="color:var(--muted);font-size:14px">Not yet indexed — using manual quality</span>';
   const eloHtml = m.arena_elo != null

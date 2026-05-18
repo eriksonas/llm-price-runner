@@ -441,6 +441,7 @@ def apply_live_scores(models: list, aa_data: dict, aa_tps: dict, arena_data: dic
         if slug:
             if slug in aa_data:
                 m["aa_index"] = round(aa_data[slug], 1)
+                m["aa_index_source"] = "live"
                 counts["aa"] += 1
             if slug in aa_tps:
                 m["aa_tps"] = int(round(aa_tps[slug]))
