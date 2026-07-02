@@ -4,7 +4,9 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>LLM Price Runner</title>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+  <meta name="description" content="Ranks ~200 LLM endpoints by AI Value — intelligence per dollar adjusted for the latency you'd see from your city. Refreshed every 6 hours." />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚡</text></svg>" />
+  <script src="/static/chart.umd.min.js"></script>
   <style>
     :root {
       --bg: #0f1117; --surface: #1a1d27; --surface2: #222536; --border: #2d3148;
@@ -294,6 +296,13 @@
 </footer>
 
 <script>
+// All model fields pass through innerHTML; notes can carry persisted
+// user input (price overrides), so everything text-ish gets escaped.
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c =>
+    ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+}
+
 let allModels = [], filteredModels = [], providerColors = {}, categories = [];
 let workloads = [], sensitivities = [], cities = [], clusters = [];
 let activeCategory = 'all', currentLicense = 'all';
@@ -510,10 +519,10 @@ function renderBestGrid() {
     if (!eligible.length) return '';
     const best = eligible.sort((a,b) => b.ai_value_score - a.ai_value_score)[0];
     const color = providerColors[best.provider] || '#6366f1';
-    return `<div class="best-card" onclick="openModal('${best.id}')">
+    return `<div class="best-card" onclick="openModal('${esc(best.id)}')">
       <div class="cat">${catLabel}</div>
-      <div class="name">${best.model}</div>
-      <span class="provider-badge" style="background:${color}22;color:${color};border:1px solid ${color}44">${best.provider}</span>
+      <div class="name">${esc(best.model)}</div>
+      <span class="provider-badge" style="background:${color}22;color:${color};border:1px solid ${color}44">${esc(best.provider)}</span>
       <div class="metrics">
         <div><span class="price-label">Blend</span> <strong>$${best.blended_cost_usd_per_1m.toFixed(3)}</strong></div>
         <div><span class="price-label">RTT</span> <strong>~${best.display_latency_ms}ms</strong></div>
@@ -562,7 +571,7 @@ function renderTable() {
     const latEmoji = { excellent:'🟢', good:'🟡', fair:'🟠', poor:'🔴' }[latClass];
     const euBadge = m.has_eu_endpoint ? '<span title="EU endpoint" style="color:#22c55e;font-size:11px">🇪🇺</span>' : '';
     const newBadge = m.is_new ? '<span class="tag new-badge">NEW</span>' : '';
-    const tags = m.categories.map(c => `<span class="tag">${c}</span>`).join('');
+    const tags = m.categories.map(c => `<span class="tag">${esc(c)}</span>`).join('');
     const col = aiValueColor(m.ai_value_score);
     const scoreBar = `<div>
       <div class="score-bar-wrap">
@@ -572,11 +581,11 @@ function renderTable() {
       <div class="score-sub">${m.intel_per_dollar.toFixed(1)} pts / $</div>
     </div>`;
 
-    return `<tr onclick="openModal('${m.id}')" style="cursor:pointer">
-      <td><span class="provider-dot" style="background:${color}"></span><span style="font-weight:500">${m.provider}</span> ${euBadge}</td>
+    return `<tr onclick="openModal('${esc(m.id)}')" style="cursor:pointer">
+      <td><span class="provider-dot" style="background:${color}"></span><span style="font-weight:500">${esc(m.provider)}</span> ${euBadge}</td>
       <td>
-        <div class="model-name">${m.model} ${newBadge}</div>
-        <div class="model-id">${m.model_id}</div>
+        <div class="model-name">${esc(m.model)} ${newBadge}</div>
+        <div class="model-id">${esc(m.model_id)}</div>
         <div style="margin-top:4px">${tags}</div>
       </td>
       <td class="price-cell"><span class="price-in">$${m.input_usd_per_1m.toFixed(3)}</span></td>
@@ -586,8 +595,8 @@ function renderTable() {
       <td class="hide-lg">${qiHtml(m)}</td>
       <td>${scoreBar}</td>
       <td class="hide-mobile" onclick="event.stopPropagation()">
-        <a class="link-btn" href="${m.pricing_url}" target="_blank">💰 Price</a>
-        <a class="link-btn" href="${m.docs_url}" target="_blank">📄 Docs</a>
+        <a class="link-btn" href="${esc(m.pricing_url)}" target="_blank" rel="noopener">💰 Price</a>
+        <a class="link-btn" href="${esc(m.docs_url)}" target="_blank" rel="noopener">📄 Docs</a>
       </td>
     </tr>`;
   }).join('');
@@ -653,9 +662,9 @@ async function openModal(modelId) {
   document.getElementById('modal-inner').innerHTML = `
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
       <span style="width:14px;height:14px;border-radius:50%;background:${color};display:inline-block"></span>
-      <h2>${m.model}${newBadge}</h2>
+      <h2>${esc(m.model)}${newBadge}</h2>
     </div>
-    <div class="provider-sub">${m.provider} · <code style="font-size:12px;color:var(--muted)">${m.model_id}</code></div>
+    <div class="provider-sub">${esc(m.provider)} · <code style="font-size:12px;color:var(--muted)">${esc(m.model_id)}</code></div>
     <div class="modal-grid">
       <div class="modal-stat"><div class="lbl">Input Price</div><div class="val" style="color:#86efac">$${m.input_usd_per_1m.toFixed(4)}<span style="font-size:12px;color:var(--muted)"> /1M</span></div></div>
       <div class="modal-stat"><div class="lbl">Output Price</div><div class="val" style="color:#fca5a5">$${m.output_usd_per_1m.toFixed(4)}<span style="font-size:12px;color:var(--muted)"> /1M</span></div></div>
@@ -669,13 +678,13 @@ async function openModal(modelId) {
       <div class="modal-stat"><div class="lbl">Context Window</div><div class="val">${m.context_window_k}k</div></div>
       <div class="modal-stat"><div class="lbl">EU Endpoint</div><div class="val" style="font-size:14px">${m.has_eu_endpoint ? '✅ Yes — GDPR-friendly' : '❌ No (US/Asia only)'}</div></div>
     </div>
-    <div class="notes-box">📝 ${m.notes}</div>
+    <div class="notes-box">📝 ${esc(m.notes)}</div>
     ${mathPanelHtml(m)}
     <div class="links-row" style="margin-top:20px">
-      <a href="${m.pricing_url}" target="_blank">💰 Pricing Page</a>
-      <a href="${m.docs_url}" target="_blank" class="secondary">📄 API Docs</a>
+      <a href="${esc(m.pricing_url)}" target="_blank" rel="noopener">💰 Pricing Page</a>
+      <a href="${esc(m.docs_url)}" target="_blank" rel="noopener" class="secondary">📄 API Docs</a>
     </div>
-    <div class="chart-section"><h3>Price History</h3><canvas id="chart-${m.id}" height="80"></canvas></div>
+    <div class="chart-section"><h3>Price History</h3><canvas id="chart-${esc(m.id)}" height="80"></canvas></div>
   `;
   document.getElementById('modal-overlay').classList.add('open');
   loadHistory(m.id);
@@ -705,7 +714,9 @@ async function loadHistory(modelId) {
 
 function closeModal(e) { if (e.target === document.getElementById('modal-overlay')) closeModalDirect(); }
 function closeModalDirect() { document.getElementById('modal-overlay').classList.remove('open'); document.getElementById('modal-inner').innerHTML = ''; }
-async function manualRefresh() { document.getElementById('nav-updated').textContent='Refreshing…'; await fetch('/api/refresh',{method:'POST'}); await boot(); }
+// POST /api/refresh is admin-gated now (the scheduler refreshes upstream
+// data every 6h anyway) — the nav button just re-pulls the served data.
+async function manualRefresh() { document.getElementById('nav-updated').textContent='Refreshing…'; await boot(); }
 document.addEventListener('keydown', e => { if (e.key==='Escape') closeModalDirect(); });
 boot();
 </script>

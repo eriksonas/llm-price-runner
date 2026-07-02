@@ -1,5 +1,7 @@
 import copy
 import logging
+import os
+import secrets
 import time
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
@@ -7,7 +9,8 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi.middleware.gzip import GZipMiddleware
+from fastapi.responses import HTMLResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -40,6 +43,25 @@ _scored_cache: dict = {}         # key: (workload, sensitivity, city) → scored
 # from amplifying external API calls (refresh fetches AA + Arena).
 _THROTTLE_SECONDS = {"refresh": 30.0, "update": 5.0}
 _last_post_at: dict = {}
+
+
+def _require_admin(request: Request) -> None:
+    """Gate mutating endpoints behind a shared-secret header.
+
+    Both POSTs alter global state (persisted price overrides, upstream
+    API quota), so they can't stay open on a public deployment. When
+    ADMIN_TOKEN isn't configured the endpoints are disabled outright
+    rather than silently open.
+    """
+    expected = os.environ.get("ADMIN_TOKEN", "")
+    if not expected:
+        raise HTTPException(
+            status_code=503,
+            detail="Admin endpoints disabled: ADMIN_TOKEN not configured",
+        )
+    provided = request.headers.get("x-admin-token", "")
+    if not secrets.compare_digest(provided, expected):
+        raise HTTPException(status_code=403, detail="Invalid admin token")
 
 
 def _throttle_or_raise(key: str) -> None:
@@ -117,7 +139,28 @@ async def lifespan(app: FastAPI):
         scheduler.shutdown()
 
 
-app = FastAPI(title="LLM Price Runner", version="3.1.0", lifespan=lifespan)
+app = FastAPI(title="LLM Price Runner", version="3.2.0", lifespan=lifespan)
+
+app.add_middleware(GZipMiddleware, minimum_size=1024)
+
+
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    response = await call_next(request)
+    # 'unsafe-inline' is required: the dashboard is a single template with
+    # inline <style> and <script>. Everything else is same-origin.
+    response.headers.setdefault(
+        "Content-Security-Policy",
+        "default-src 'self'; script-src 'self' 'unsafe-inline'; "
+        "style-src 'self' 'unsafe-inline'; img-src 'self' data:; "
+        "connect-src 'self'; frame-ancestors 'none'",
+    )
+    response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    return response
+
 
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 static_dir = Path(__file__).parent / "static"
@@ -140,6 +183,11 @@ async def dashboard(request: Request):
 @app.get("/healthz")
 async def healthz():
     return {"ok": True}
+
+
+@app.get("/robots.txt", response_class=PlainTextResponse)
+async def robots():
+    return "User-agent: *\nAllow: /\nDisallow: /api/\n"
 
 
 @app.get("/api/models")
@@ -172,7 +220,8 @@ async def get_history(model_id: str):
 
 
 @app.post("/api/update")
-async def update_price(update: PriceUpdate):
+async def update_price(update: PriceUpdate, request: Request):
+    _require_admin(request)
     _throttle_or_raise("update")
     if update.id not in {m["id"] for m in PROVIDERS}:
         raise HTTPException(status_code=404, detail="Model not found")
@@ -182,7 +231,8 @@ async def update_price(update: PriceUpdate):
 
 
 @app.post("/api/refresh")
-async def manual_refresh():
+async def manual_refresh(request: Request):
+    _require_admin(request)
     _throttle_or_raise("refresh")
     await _refresh_models()
     return {"status": "ok", "last_updated": _last_updated}

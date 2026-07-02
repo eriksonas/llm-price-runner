@@ -184,15 +184,19 @@ the `network_rtt_ms` field for a few models matches what's currently in
 | `GET /api/models?category=code` | All models, optional category filter |
 | `GET /api/best` | Best EU value per category |
 | `GET /api/history/{model_id}` | Price history for a model |
-| `POST /api/update` | Update a model's price manually |
-| `POST /api/refresh` | Trigger immediate data refresh |
+| `POST /api/update` | Update a model's price manually (requires `X-Admin-Token`) |
+| `POST /api/refresh` | Trigger immediate data refresh (requires `X-Admin-Token`) |
 | `GET /api/meta` | Metadata (categories, colors, counts) |
 
 ## Update a price manually
 
+Requires the `ADMIN_TOKEN` from the `.env` on the VPS (generate one with
+`openssl rand -hex 32`; the endpoint returns 503 until it's set):
+
 ```bash
 curl -X POST https://models.agent-startup.com/api/update \
   -H "Content-Type: application/json" \
+  -H "X-Admin-Token: $ADMIN_TOKEN" \
   -d '{"id":"openai-gpt-4o","input_usd_per_1m":2.50,"output_usd_per_1m":10.00,"notes":"Verified 2026-04-17"}'
 
 # `id` is the catalogue slug from app/data/providers.py (e.g. "openai-gpt-4o"),

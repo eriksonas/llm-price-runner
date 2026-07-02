@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import List, Optional
 from datetime import datetime
 
@@ -25,10 +25,13 @@ class ModelEntry(BaseModel):
 
 
 class PriceUpdate(BaseModel):
-    id: str
-    input_usd_per_1m: float
-    output_usd_per_1m: float
-    notes: Optional[str] = None
+    id: str = Field(max_length=200)
+    # ge=0: some free-tier endpoints legitimately price at $0. The upper
+    # bound is a sanity cap, not a real price — no endpoint charges
+    # anywhere near $100k/1M tokens.
+    input_usd_per_1m: float = Field(ge=0, le=100_000)
+    output_usd_per_1m: float = Field(ge=0, le=100_000)
+    notes: Optional[str] = Field(default=None, max_length=500)
 
 
 class PriceHistoryEntry(BaseModel):

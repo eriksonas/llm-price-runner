@@ -75,8 +75,16 @@ SQLite lives at `/data/pricerunner.db` by default — change `DB_PATH` in
 | `GET /api/meta` | Categories, providers, workloads, sensitivities, cities |
 | `GET /api/models?workload=chat&sensitivity=interactive&city=vilnius&category=code` | Scored models, filterable |
 | `GET /api/history/{id}` | Daily price snapshots for a model |
-| `POST /api/update` | Manual price override (throttled: 5 s / call) |
-| `POST /api/refresh` | Force a refresh from upstream leaderboards (throttled: 30 s / call) |
+| `POST /api/update` | Manual price override (admin-only, throttled: 5 s / call) |
+| `POST /api/refresh` | Force a refresh from upstream leaderboards (admin-only, throttled: 30 s / call) |
+
+Both POST endpoints require the `X-Admin-Token` header matching the
+`ADMIN_TOKEN` env var (see `.env.example`); when the var is unset they
+return 503. The scheduled 6-hourly refresh is unaffected.
+
+```bash
+curl -X POST -H "X-Admin-Token: $ADMIN_TOKEN" https://models.agent-startup.com/api/refresh
+```
 
 `POST /api/update` payload:
 
