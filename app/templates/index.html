@@ -122,6 +122,14 @@
     .price-in  { color: #86efac; font-weight: 500; }
     .price-out { color: #fca5a5; font-weight: 500; }
     .price-label { font-size: 10px; color: var(--muted); }
+    .delta { font-size: 10px; font-weight: 600; margin-left: 4px; white-space: nowrap; }
+
+    .calc-input { width: 62px; background: var(--surface2); border: 1px solid var(--border); color: var(--text); border-radius: 6px; padding: 4px 8px; font-size: 12px; outline: none; font-variant-numeric: tabular-nums; }
+    .calc-input:focus { border-color: var(--accent); }
+    .calc-input::placeholder { color: var(--muted); }
+    .cost-col { display: none; }
+    table.calc-on .cost-col { display: table-cell; }
+    .est-cost { color: var(--accent2); font-weight: 600; }
 
     .link-btn { display: inline-flex; align-items: center; gap: 4px; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 3px 8px; font-size: 11px; color: var(--muted); text-decoration: none; margin: 1px; transition: all 0.15s; }
     .link-btn:hover { border-color: var(--accent); color: var(--accent2); }
@@ -195,6 +203,13 @@
       <div class="label">Your location</div>
       <div class="city-picker" id="city-picker"></div>
     </div>
+    <div class="control-group">
+      <div class="label" title="Estimated monthly bill per model — adds an Est $/mo column">Monthly usage (M tokens)</div>
+      <div class="chips">
+        <input class="calc-input" id="calc-in" type="number" min="0" step="1" placeholder="in" oninput="setCalc()" />
+        <input class="calc-input" id="calc-out" type="number" min="0" step="1" placeholder="out" oninput="setCalc()" />
+      </div>
+    </div>
     <div class="formula">
       <strong>AI Value</strong> = log₁₀(quality / blended $) − log₁₀((ms + k/4) / (k + k/4))<br>
       <span style="font-size:11px">ms = TTFT + city→region RTT + α·gen_time · bonus below knee k, penalty above · +1.0 ≈ 10× value</span>
@@ -262,6 +277,7 @@
           <th onclick="setSort('model')">Model <span class="sort-icon">↕</span></th>
           <th onclick="setSort('input_usd_per_1m')">In / 1M <span class="sort-icon">↕</span></th>
           <th onclick="setSort('output_usd_per_1m')">Out / 1M <span class="sort-icon">↕</span></th>
+          <th class="cost-col" onclick="setSort('est_monthly_usd')">Est $ / mo <span class="sort-icon">↕</span></th>
           <th class="hide-mobile" onclick="setSort('context_window_k')">Ctx <span class="sort-icon">↕</span></th>
           <th onclick="setSort('display_latency_ms')">Latency <span id="lat-col-flag">🇱🇹</span> <span class="sort-icon">↕</span></th>
           <th class="hide-lg" onclick="setSort('quality_index')">Quality Index <span class="sort-icon">↕</span></th>
@@ -282,6 +298,7 @@
           </td>
           <td class="price-cell"><span class="price-in">${{ '%.3f' % m.input_usd_per_1m }}</span></td>
           <td class="price-cell"><span class="price-out">${{ '%.2f' % m.output_usd_per_1m }}</span></td>
+          <td class="cost-col"></td>
           <td class="hide-mobile ctx">{{ m.context_window_k }}k</td>
           <td><span class="latency">~{{ m.display_latency_ms }}ms</span></td>
           <td class="hide-lg">{{ '%.0f' % m.quality_index }}</td>
@@ -289,7 +306,7 @@
           <td class="hide-mobile"></td>
         </tr>
         {% else %}
-        <tr><td colspan="9" class="loading">Loading models…</td></tr>
+        <tr><td colspan="10" class="loading">Loading models…</td></tr>
         {% endfor %}
       </tbody>
     </table>
@@ -400,9 +417,35 @@ let defaultWorkload = 'chat', defaultSensitivity = 'interactive', defaultCity = 
 const SORT_KEYS = [
   'ai_value_score','intel_per_dollar','input_usd_per_1m','output_usd_per_1m',
   'blended_cost_usd_per_1m','display_latency_ms','quality_index','arena_elo',
-  'provider','model','context_window_k',
+  'provider','model','context_window_k','est_monthly_usd',
 ];
-const ASC_SORT_KEYS = ['input_usd_per_1m','output_usd_per_1m','blended_cost_usd_per_1m','display_latency_ms','provider','model'];
+const ASC_SORT_KEYS = ['input_usd_per_1m','output_usd_per_1m','blended_cost_usd_per_1m','display_latency_ms','provider','model','est_monthly_usd'];
+
+// ── Monthly cost calculator (client-side only) ──────────────────────────────
+let calcIn = 0, calcOut = 0;
+function calcActive() { return calcIn > 0 || calcOut > 0; }
+function estMonthly(m) { return calcIn * m.input_usd_per_1m + calcOut * m.output_usd_per_1m; }
+function fmtUsd(v) {
+  return '$' + v.toLocaleString('en-US', { maximumFractionDigits: v < 100 ? 2 : 0 });
+}
+function updateCalcColumn() {
+  document.querySelector('.table-wrap table').classList.toggle('calc-on', calcActive());
+}
+function setCalc() {
+  calcIn = Math.max(0, parseFloat(document.getElementById('calc-in').value) || 0);
+  calcOut = Math.max(0, parseFloat(document.getElementById('calc-out').value) || 0);
+  updateCalcColumn();
+  syncUrl();
+  renderTable();
+}
+
+// ▲/▼ vs the newest price snapshot ≥7 days old; hidden when there's no
+// baseline yet or the price is unchanged. Up = red (costs more).
+function changeBadge(pct) {
+  if (pct == null || Math.abs(pct) < 0.05) return '';
+  const up = pct > 0;
+  return `<span class="delta" style="color:${up ? '#f87171' : '#4ade80'}" title="vs 7 days ago">${up ? '▲' : '▼'}${Math.abs(pct).toFixed(1)}%</span>`;
+}
 
 function applyUrlParams() {
   const p = new URLSearchParams(location.search);
@@ -417,6 +460,11 @@ function applyUrlParams() {
   sortAsc = ASC_SORT_KEYS.includes(sortKey);
   document.getElementById('sort-select').value = sortKey;
   document.getElementById('search-input').value = p.get('q') || '';
+  calcIn = Math.max(0, parseFloat(p.get('in')) || 0);
+  calcOut = Math.max(0, parseFloat(p.get('out')) || 0);
+  document.getElementById('calc-in').value = calcIn || '';
+  document.getElementById('calc-out').value = calcOut || '';
+  updateCalcColumn();
 }
 
 function syncUrl() {
@@ -428,6 +476,8 @@ function syncUrl() {
   if (currentLicense !== 'all') p.set('license', currentLicense);
   if (currentFrontier !== 'frontier') p.set('tier', currentFrontier);
   if (sortKey !== 'ai_value_score') p.set('sort', sortKey);
+  if (calcIn > 0) p.set('in', calcIn);
+  if (calcOut > 0) p.set('out', calcOut);
   const q = document.getElementById('search-input').value.trim();
   if (q) p.set('q', q);
   const qs = p.toString();
@@ -652,9 +702,10 @@ function qiHtml(m) {
 }
 
 function renderTable() {
+  filteredModels.forEach(m => { m.est_monthly_usd = estMonthly(m); });
   const models = sortModels(filteredModels);
   const tbody = document.getElementById('model-tbody');
-  if (!models.length) { tbody.innerHTML = '<tr><td colspan="9" class="loading">No models match.</td></tr>'; return; }
+  if (!models.length) { tbody.innerHTML = '<tr><td colspan="10" class="loading">No models match.</td></tr>'; return; }
 
   tbody.innerHTML = models.map(m => {
     const color = providerColors[m.provider] || '#6366f1';
@@ -679,8 +730,9 @@ function renderTable() {
         <div class="model-id">${esc(m.model_id)}</div>
         <div style="margin-top:4px">${tags}</div>
       </td>
-      <td class="price-cell"><span class="price-in">$${m.input_usd_per_1m.toFixed(3)}</span></td>
-      <td class="price-cell"><span class="price-out">$${m.output_usd_per_1m.toFixed(2)}</span></td>
+      <td class="price-cell"><span class="price-in">$${m.input_usd_per_1m.toFixed(3)}</span>${changeBadge(m.input_change_pct_7d)}</td>
+      <td class="price-cell"><span class="price-out">$${m.output_usd_per_1m.toFixed(2)}</span>${changeBadge(m.output_change_pct_7d)}</td>
+      <td class="cost-col price-cell"><span class="est-cost">${fmtUsd(m.est_monthly_usd)}</span></td>
       <td class="hide-mobile ctx">${m.context_window_k}k</td>
       <td><span class="latency ${latClass}">${latEmoji} ~${m.display_latency_ms}ms</span></td>
       <td class="hide-lg">${qiHtml(m)}</td>
@@ -757,10 +809,11 @@ async function openModal(modelId) {
     </div>
     <div class="provider-sub">${esc(m.provider)} · <code style="font-size:12px;color:var(--muted)">${esc(m.model_id)}</code></div>
     <div class="modal-grid">
-      <div class="modal-stat"><div class="lbl">Input Price</div><div class="val" style="color:#86efac">$${m.input_usd_per_1m.toFixed(4)}<span style="font-size:12px;color:var(--muted)"> /1M</span></div></div>
-      <div class="modal-stat"><div class="lbl">Output Price</div><div class="val" style="color:#fca5a5">$${m.output_usd_per_1m.toFixed(4)}<span style="font-size:12px;color:var(--muted)"> /1M</span></div></div>
+      <div class="modal-stat"><div class="lbl">Input Price</div><div class="val" style="color:#86efac">$${m.input_usd_per_1m.toFixed(4)}<span style="font-size:12px;color:var(--muted)"> /1M</span>${changeBadge(m.input_change_pct_7d)}</div></div>
+      <div class="modal-stat"><div class="lbl">Output Price</div><div class="val" style="color:#fca5a5">$${m.output_usd_per_1m.toFixed(4)}<span style="font-size:12px;color:var(--muted)"> /1M</span>${changeBadge(m.output_change_pct_7d)}</div></div>
       <div class="modal-stat"><div class="lbl">Blended Cost (${m.workload_ratio})</div><div class="val">$${m.blended_cost_usd_per_1m.toFixed(4)}<span style="font-size:12px;color:var(--muted)"> /1M</span></div></div>
       <div class="modal-stat"><div class="lbl">Intelligence per $</div><div class="val">${m.intel_per_dollar.toFixed(2)}<span style="font-size:12px;color:var(--muted)"> pts/$</span></div></div>
+      ${calcActive() ? `<div class="modal-stat"><div class="lbl">Est. Monthly Cost</div><div class="val est-cost">${fmtUsd(estMonthly(m))}<span style="font-size:12px;color:var(--muted)"> at ${calcIn}M in + ${calcOut}M out</span></div></div>` : ''}
       <div class="modal-stat"><div class="lbl">AA Intelligence Index</div><div class="val">${aaHtml}</div></div>
       <div class="modal-stat"><div class="lbl">Arena ELO (display only)</div><div class="val">${eloHtml}</div></div>
       <div class="modal-stat"><div class="lbl">AI Value Score</div><div class="val" style="color:${aiCol}">${m.ai_value_score.toFixed(3)}<span style="font-size:12px;color:var(--muted)"> (log₁₀)</span></div></div>

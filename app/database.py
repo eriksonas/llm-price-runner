@@ -1,5 +1,5 @@
 import aiosqlite
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 DB_PATH = Path("/data/pricerunner.db")
@@ -77,6 +77,27 @@ async def get_price_history(model_id: str, limit: int = 30) -> list:
         ) as cursor:
             rows = await cursor.fetchall()
             return [dict(r) for r in rows]
+
+
+async def get_price_baseline(days: int = 7) -> dict:
+    """Newest snapshot per model that is at least `days` old — the
+    comparison point for the dashboard's price-change badges. Models
+    with no history that old are simply absent from the result."""
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            """SELECT model_id, input_usd_per_1m, output_usd_per_1m FROM (
+                 SELECT model_id, input_usd_per_1m, output_usd_per_1m,
+                        ROW_NUMBER() OVER (
+                          PARTITION BY model_id ORDER BY recorded_at DESC
+                        ) AS rn
+                 FROM price_history WHERE recorded_at <= ?
+               ) WHERE rn = 1""",
+            (cutoff,),
+        ) as cursor:
+            rows = await cursor.fetchall()
+            return {r["model_id"]: dict(r) for r in rows}
 
 
 async def save_override(model_id: str, input_price: float, output_price: float, notes: str = ""):

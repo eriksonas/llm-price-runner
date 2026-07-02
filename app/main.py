@@ -18,7 +18,14 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from app.data.providers import PROVIDERS, CATEGORIES, PROVIDER_COLORS
 from app.data.geo import CITIES, DEFAULT_CITY, REGION_CLUSTERS
-from app.database import init_db, record_prices, get_price_history, save_override, get_overrides
+from app.database import (
+    init_db,
+    record_prices,
+    get_price_baseline,
+    get_price_history,
+    save_override,
+    get_overrides,
+)
 from app.models import PriceUpdate
 from app.scoring import (
     compute_scores,
@@ -86,6 +93,12 @@ def _validated(value: Optional[str], allowed, default: str) -> str:
     return value if value in allowed else default
 
 
+def _pct_change(old: Optional[float], new: float) -> Optional[float]:
+    if old is None or old <= 0:
+        return None
+    return round((new - old) / old * 100, 1)
+
+
 async def _refresh_models(fetch_live: bool = True):
     """Rebuild the in-memory catalogue: seeds + DB overrides + quality data.
 
@@ -110,7 +123,16 @@ async def _refresh_models(fetch_live: bool = True):
     else:
         models, fetch_counts = apply_cached_quality_indices(models)
 
+    try:
+        baseline = await get_price_baseline(days=7)
+    except Exception as e:
+        logger.warning("Failed to load price baseline: %s", e)
+        baseline = {}
+
     for m in models:
+        base = baseline.get(m["id"])
+        m["input_change_pct_7d"] = _pct_change(base and base["input_usd_per_1m"], m["input_usd_per_1m"])
+        m["output_change_pct_7d"] = _pct_change(base and base["output_usd_per_1m"], m["output_usd_per_1m"])
         m["is_open_weight"] = is_open_weight(m)
         # `apply_live_scores` set aa_index_source="live" on every entry it
         # touched. Anything else with a non-null aa_index is using the
