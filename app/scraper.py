@@ -91,7 +91,7 @@ AA_SLUGS = {
     "mistral-large-3":                               "mistral-large-3",
     "mistral-medium-3.5":                            "mistral-medium-3-5",
     "mistral-medium-latest":                         "mistral-medium-3",
-    "mistral-small-latest":                          "mistral-small-3",
+    "mistral-small-latest":                          "mistral-small-4",
     "magistral-medium-latest":                       "magistral-medium",
     "magistral-small-latest":                        "magistral-small",
     "devstral-medium-latest":                        "devstral-medium",
@@ -104,10 +104,12 @@ AA_SLUGS = {
     # ── DeepSeek ─────────────────────────────────────────────────────────────
     "deepseek-v4-pro":                               "deepseek-v4-pro",
     "deepseek-v4-flash":                             "deepseek-v4-flash",
-    "deepseek-chat":                                 "deepseek-v3",
+    # deepseek-chat / deepseek-reasoner are legacy aliases that DeepSeek
+    # repointed to V4-Flash (non-thinking / thinking) in June 2026.
+    "deepseek-chat":                                 "deepseek-v4-flash",
     "deepseek-v3.1":                                 "deepseek-v3-1",
     "deepseek-v3.2-exp":                             "deepseek-v3-2",
-    "deepseek-reasoner":                             "deepseek-r1",
+    "deepseek-reasoner":                             "deepseek-v4-flash-high",
     # deepseek-r2: not in AA.
 
     # ── Meta (Llama family across providers) ─────────────────────────────────
