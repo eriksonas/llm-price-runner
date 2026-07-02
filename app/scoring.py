@@ -295,7 +295,7 @@ def best_per_category(models: list, categories: list) -> dict:
 # `is_open_weight` directly; the dashboard JS just reads the flag.
 
 _OPEN_PROVIDERS = {
-    "Meta (API)", "DeepSeek", "Qwen", "Moonshot AI", "Z.ai",
+    "Meta (API)", "DeepSeek", "Qwen", "Moonshot AI", "Z.ai", "MiniMax",
     "Groq", "Cerebras", "Together AI", "Fireworks AI", "SiliconFlow", "NVIDIA",
 }
 _PROP_PROVIDERS = {

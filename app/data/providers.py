@@ -7,7 +7,7 @@ arena_elo  : LMSYS Chatbot Arena ELO. Source: lmarena.ai
              None = not yet benchmarked on that leaderboard.
              Values are auto-refreshed by scraper every 6h; seeded values below are fallbacks.
 
-Last data review: 2026-04-17
+Last data review: 2026-07-02
 """
 
 PROVIDERS = [
@@ -280,20 +280,50 @@ PROVIDERS = [
     # Anthropic  —  https://www.anthropic.com/pricing
     # ══════════════════════════════════════════════════════════════════════════
     {
+        "id": "anthropic-claude-fable-5",
+        "provider": "Anthropic", "model": "Claude Fable 5", "model_id": "claude-fable-5",
+        "categories": ["chat", "reasoning", "code", "vision"],
+        "input_usd_per_1m": 10.00, "output_usd_per_1m": 50.00, "context_window_k": 1000,
+        "primary_region": "us-east-1", "has_eu_endpoint": False, "eu_latency_ms": 180,
+        "quality_score": 9.9, "aa_index": 60.0, "arena_elo": None,
+        "pricing_url": "https://www.anthropic.com/pricing", "docs_url": "https://docs.anthropic.com",
+        "notes": "Anthropic's most capable model (2026-06-09). Always-on adaptive thinking, 128K max output. Requires 30-day data retention.", "is_new": True,
+    },
+    {
+        "id": "anthropic-claude-opus-4-8",
+        "provider": "Anthropic", "model": "Claude Opus 4.8", "model_id": "claude-opus-4-8",
+        "categories": ["chat", "reasoning", "code", "vision"],
+        "input_usd_per_1m": 5.00, "output_usd_per_1m": 25.00, "context_window_k": 1000,
+        "primary_region": "us-east-1", "has_eu_endpoint": False, "eu_latency_ms": 180,
+        "quality_score": 9.8, "aa_index": 56.0, "arena_elo": None,
+        "pricing_url": "https://www.anthropic.com/pricing", "docs_url": "https://docs.anthropic.com",
+        "notes": "Current Opus (2026-05-28). SOTA long-horizon agentic work; 1M context at standard pricing, 128K max output.", "is_new": True,
+    },
+    {
+        "id": "anthropic-claude-sonnet-5",
+        "provider": "Anthropic", "model": "Claude Sonnet 5", "model_id": "claude-sonnet-5",
+        "categories": ["chat", "code", "vision", "reasoning"],
+        "input_usd_per_1m": 3.00, "output_usd_per_1m": 15.00, "context_window_k": 1000,
+        "primary_region": "us-east-1", "has_eu_endpoint": False, "eu_latency_ms": 180,
+        "quality_score": 9.6, "aa_index": 53.0, "arena_elo": None,
+        "pricing_url": "https://www.anthropic.com/pricing", "docs_url": "https://docs.anthropic.com",
+        "notes": "Released 2026-06-30. Intro pricing $2/$10 through Aug 2026, then $3/$15. 1M context default, 128K max output. New tokenizer (~30% more tokens per text).", "is_new": True,
+    },
+    {
         "id": "anthropic-claude-opus-4",
         "provider": "Anthropic", "model": "Claude Opus 4.7", "model_id": "claude-opus-4-7",
         "categories": ["chat", "reasoning", "code", "vision"],
-        "input_usd_per_1m": 15.00, "output_usd_per_1m": 75.00, "context_window_k": 200,
+        "input_usd_per_1m": 5.00, "output_usd_per_1m": 25.00, "context_window_k": 1000,
         "primary_region": "us-east-1", "has_eu_endpoint": False, "eu_latency_ms": 180,
         "quality_score": 9.7, "aa_index": 57.0, "arena_elo": 1505,
         "pricing_url": "https://www.anthropic.com/pricing", "docs_url": "https://docs.anthropic.com",
-        "notes": "Flagship. Use via AWS Bedrock eu-central-1 for EU latency.", "is_new": True,
+        "notes": "Previous-gen Opus. 1M context. Use via AWS Bedrock eu-central-1 for EU latency.", "is_new": False,
     },
     {
         "id": "anthropic-claude-sonnet-4",
         "provider": "Anthropic", "model": "Claude Sonnet 4.6", "model_id": "claude-sonnet-4-6",
         "categories": ["chat", "code", "vision", "reasoning"],
-        "input_usd_per_1m": 3.00, "output_usd_per_1m": 15.00, "context_window_k": 200,
+        "input_usd_per_1m": 3.00, "output_usd_per_1m": 15.00, "context_window_k": 1000,
         "primary_region": "us-east-1", "has_eu_endpoint": False, "eu_latency_ms": 180,
         "quality_score": 9.3, "aa_index": 52.0, "arena_elo": 1461,
         "pricing_url": "https://www.anthropic.com/pricing", "docs_url": "https://docs.anthropic.com",
@@ -343,7 +373,7 @@ PROVIDERS = [
         "id": "anthropic-claude-haiku-4",
         "provider": "Anthropic", "model": "Claude Haiku 4.5", "model_id": "claude-haiku-4-5",
         "categories": ["chat", "code", "vision"],
-        "input_usd_per_1m": 0.80, "output_usd_per_1m": 4.00, "context_window_k": 200,
+        "input_usd_per_1m": 1.00, "output_usd_per_1m": 5.00, "context_window_k": 200,
         "primary_region": "us-east-1", "has_eu_endpoint": False, "eu_latency_ms": 180,
         "quality_score": 8.0, "aa_index": 37.0, "arena_elo": 1408,
         "pricing_url": "https://www.anthropic.com/pricing", "docs_url": "https://docs.anthropic.com",
@@ -373,6 +403,16 @@ PROVIDERS = [
     # ══════════════════════════════════════════════════════════════════════════
     # Google  —  https://ai.google.dev/pricing
     # ══════════════════════════════════════════════════════════════════════════
+    {
+        "id": "google-gemini-3-5-flash",
+        "provider": "Google", "model": "Gemini 3.5 Flash", "model_id": "gemini-3.5-flash",
+        "categories": ["chat", "vision", "code", "reasoning"],
+        "input_usd_per_1m": 1.50, "output_usd_per_1m": 9.00, "context_window_k": 1000,
+        "primary_region": "eu-west1", "has_eu_endpoint": True, "eu_latency_ms": 35,
+        "quality_score": 9.5, "aa_index": 50.0, "arena_elo": None,
+        "pricing_url": "https://ai.google.dev/gemini-api/docs/pricing", "docs_url": "https://ai.google.dev/gemini-api/docs",
+        "notes": "I/O 2026 launch (May 19). Beats Gemini 3.1 Pro on coding/agentic benchmarks at ~25% less cost. 65K max output; text/image/video/audio/PDF input.", "is_new": True,
+    },
     {
         "id": "google-gemini-3-pro",
         "provider": "Google", "model": "Gemini 3 Pro", "model_id": "gemini-3-pro",
@@ -1225,6 +1265,26 @@ PROVIDERS = [
         "notes": "Strong open vision-language MoE. Long-video understanding.", "is_new": True,
     },
     {
+        "id": "qwen-qwen3-7-max",
+        "provider": "Qwen", "model": "Qwen3.7 Max", "model_id": "qwen3.7-max",
+        "categories": ["chat", "code", "reasoning"],
+        "input_usd_per_1m": 2.50, "output_usd_per_1m": 7.50, "context_window_k": 1000,
+        "primary_region": "cn-hangzhou", "has_eu_endpoint": False, "eu_latency_ms": 260,
+        "quality_score": 9.4, "aa_index": 46.0, "arena_elo": None,
+        "pricing_url": "https://www.alibabacloud.com/en/product/bailian", "docs_url": "https://www.alibabacloud.com/help/en/model-studio/",
+        "notes": "Qwen3.7 flagship (2026-05-19), agent-centric. 1M context, 66K max output, prompt caching. OpenAI/Anthropic API compatible.", "is_new": True,
+    },
+    {
+        "id": "qwen-qwen3-7-plus",
+        "provider": "Qwen", "model": "Qwen3.7 Plus", "model_id": "qwen3.7-plus",
+        "categories": ["chat", "vision", "code"],
+        "input_usd_per_1m": 0.40, "output_usd_per_1m": 1.16, "context_window_k": 1000,
+        "primary_region": "cn-hangzhou", "has_eu_endpoint": False, "eu_latency_ms": 260,
+        "quality_score": 8.9, "aa_index": 39.0, "arena_elo": None,
+        "pricing_url": "https://www.alibabacloud.com/en/product/bailian", "docs_url": "https://www.alibabacloud.com/help/en/model-studio/",
+        "notes": "Cost-effective Qwen3.7 tier (2026-06-01). Multimodal GUI-agent capable (screen reading, app navigation). 1M context.", "is_new": True,
+    },
+    {
         "id": "qwen-max",
         "provider": "Qwen", "model": "Qwen Max", "model_id": "qwen-max",
         "categories": ["chat", "code", "reasoning"],
@@ -1259,6 +1319,16 @@ PROVIDERS = [
     # Moonshot AI (Kimi)  —  https://platform.moonshot.ai/pricing
     # ══════════════════════════════════════════════════════════════════════════
     {
+        "id": "moonshot-kimi-k2-7-code",
+        "provider": "Moonshot AI", "model": "Kimi K2.7 Code", "model_id": "kimi-k2.7-code",
+        "categories": ["code", "chat", "reasoning"],
+        "input_usd_per_1m": 0.95, "output_usd_per_1m": 4.00, "context_window_k": 256,
+        "primary_region": "cn-beijing", "has_eu_endpoint": False, "eu_latency_ms": 260,
+        "quality_score": 9.2, "aa_index": 42.0, "arena_elo": None,
+        "pricing_url": "https://platform.moonshot.ai/pricing", "docs_url": "https://platform.moonshot.ai/docs",
+        "notes": "Agentic coding model (2026-06-12). 1T MoE (32B active), Modified MIT open weights. ~30% fewer thinking tokens than K2.6; cache-hit input $0.19/1M.", "is_new": True,
+    },
+    {
         "id": "moonshot-kimi-k2-6",
         "provider": "Moonshot AI", "model": "Kimi K2.6", "model_id": "kimi-k2.6",
         "categories": ["chat", "code", "reasoning"],
@@ -1290,6 +1360,20 @@ PROVIDERS = [
     },
 
     # ══════════════════════════════════════════════════════════════════════════
+    # MiniMax  —  https://platform.minimax.io
+    # ══════════════════════════════════════════════════════════════════════════
+    {
+        "id": "minimax-m3",
+        "provider": "MiniMax", "model": "MiniMax M3", "model_id": "MiniMax-M3",
+        "categories": ["chat", "code", "reasoning"],
+        "input_usd_per_1m": 0.30, "output_usd_per_1m": 1.20, "context_window_k": 1000,
+        "primary_region": "cn-east", "has_eu_endpoint": False, "eu_latency_ms": 270,
+        "quality_score": 9.3, "aa_index": 44.0, "arena_elo": None,
+        "pricing_url": "https://platform.minimax.io/docs/price", "docs_url": "https://platform.minimax.io/docs",
+        "notes": "Released 2026-05-31. 1M context, 512K max output. Launch promo pricing (standard $0.60/$2.40); tiered above 512K input. Open weights.", "is_new": True,
+    },
+
+    # ══════════════════════════════════════════════════════════════════════════
     # Z.ai / Zhipu (GLM)  —  https://z.ai/subscribe
     # ══════════════════════════════════════════════════════════════════════════
     {
@@ -1311,6 +1395,16 @@ PROVIDERS = [
         "quality_score": 8.2, "aa_index": 28.0, "arena_elo": 1373,
         "pricing_url": "https://z.ai/subscribe", "docs_url": "https://docs.z.ai",
         "notes": "Compact open-weight GLM. Available via Fireworks EU.", "is_new": True,
+    },
+    {
+        "id": "zai-glm-5-2",
+        "provider": "Z.ai", "model": "GLM-5.2", "model_id": "glm-5.2",
+        "categories": ["chat", "reasoning", "code"],
+        "input_usd_per_1m": 1.40, "output_usd_per_1m": 4.40, "context_window_k": 256,
+        "primary_region": "cn-beijing", "has_eu_endpoint": False, "eu_latency_ms": 270,
+        "quality_score": 9.6, "aa_index": 51.0, "arena_elo": None,
+        "pricing_url": "https://z.ai/subscribe", "docs_url": "https://docs.z.ai",
+        "notes": "Released 2026-06-16. 753B MoE (40B active), MIT open weights. Beats GPT-5.5 on long-horizon coding benchmarks at ~1/6 the cost. Cached input $0.26/1M.", "is_new": True,
     },
     {
         "id": "zai-glm-5-1",
@@ -2141,6 +2235,7 @@ PROVIDER_COLORS = {
     "AWS Bedrock":  "#f59e0b",
     "Azure OpenAI": "#0078d4",
     "Moonshot AI":  "#2dd4bf",
+    "MiniMax":      "#fb7185",
     "Z.ai":         "#a78bfa",
     "NVIDIA":       "#76b900",
     "OpenRouter":   "#6366f1",
