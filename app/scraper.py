@@ -455,6 +455,15 @@ def apply_live_scores(models: list, aa_data: dict, aa_tps: dict, arena_data: dic
     counts = {"aa": 0, "aa_tps": 0, "arena": 0}
     for m in models:
         slug = AA_SLUGS.get(m["model_id"])
+        if not slug:
+            # Auto-match fallback: AA slugs are just dash-normalized model
+            # ids for most entries ("gpt-5.5" → "gpt-5-5"), so try that
+            # before giving up. Only accepted on an exact hit against the
+            # fetched catalogue — no substring guessing — which keeps the
+            # hand-written map for the genuinely irregular names only.
+            guess = _arena_normalize(m["model_id"])
+            if guess in aa_data or guess in aa_tps:
+                slug = guess
         if slug:
             if slug in aa_data:
                 m["aa_index"] = round(aa_data[slug], 1)
@@ -477,4 +486,14 @@ async def refresh_quality_indices(models: list) -> tuple[list, dict]:
     counts = {"aa": 0, "aa_tps": 0, "arena": 0}
     if aa_data or aa_tps or arena_data:
         models, counts = apply_live_scores(models, aa_data, aa_tps, arena_data)
+    return models, counts
+
+
+def apply_cached_quality_indices(models: list) -> tuple[list, dict]:
+    """Re-apply the most recently fetched AA/Arena data without touching
+    the network. Used when rebuilding the catalogue after a price
+    override, where quality data can't have changed."""
+    counts = {"aa": 0, "aa_tps": 0, "arena": 0}
+    if _aa_cache or _aa_tps_cache or _arena_cache:
+        models, counts = apply_live_scores(models, _aa_cache, _aa_tps_cache, _arena_cache)
     return models, counts

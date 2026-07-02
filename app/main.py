@@ -1,4 +1,5 @@
 import copy
+import hashlib
 import logging
 import os
 import secrets
@@ -8,9 +9,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import HTMLResponse, PlainTextResponse
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -27,7 +28,7 @@ from app.scoring import (
     DEFAULT_WORKLOAD,
     DEFAULT_SENSITIVITY,
 )
-from app.scraper import refresh_quality_indices
+from app.scraper import apply_cached_quality_indices, refresh_quality_indices
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -35,6 +36,10 @@ logger = logging.getLogger(__name__)
 
 scheduler = AsyncIOScheduler()
 _last_updated: str = ""
+_data_version: int = 0           # bumped on every rebuild; ETag identity
+                                 # (_last_updated is minute-granular, too
+                                 # coarse to distinguish an override that
+                                 # lands in the same minute as a refresh)
 _raw_models: list = []           # with overrides + scraped indices, no scores
 _scored_cache: dict = {}         # key: (workload, sensitivity, city) → scored list
 
@@ -81,8 +86,14 @@ def _validated(value: Optional[str], allowed, default: str) -> str:
     return value if value in allowed else default
 
 
-async def _refresh_models():
-    global _raw_models, _last_updated
+async def _refresh_models(fetch_live: bool = True):
+    """Rebuild the in-memory catalogue: seeds + DB overrides + quality data.
+
+    fetch_live=False reuses the scraper's cached AA/Arena data instead of
+    hitting upstream — right for override saves, where only prices changed
+    and an external refetch would burn AA quota for nothing.
+    """
+    global _raw_models, _last_updated, _data_version
     models = copy.deepcopy(PROVIDERS)
 
     overrides = await get_overrides()
@@ -94,7 +105,10 @@ async def _refresh_models():
             if ov.get("notes"):
                 m["notes"] = ov["notes"]
 
-    models, fetch_counts = await refresh_quality_indices(models)
+    if fetch_live:
+        models, fetch_counts = await refresh_quality_indices(models)
+    else:
+        models, fetch_counts = apply_cached_quality_indices(models)
 
     for m in models:
         m["is_open_weight"] = is_open_weight(m)
@@ -108,6 +122,7 @@ async def _refresh_models():
 
     _raw_models = models
     _scored_cache.clear()
+    _data_version += 1
     _last_updated = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     try:
         await record_prices(models)
@@ -159,7 +174,24 @@ async def security_headers(request: Request, call_next):
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
     response.headers.setdefault("X-Frame-Options", "DENY")
     response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    if request.url.path.startswith("/static/"):
+        response.headers.setdefault("Cache-Control", "public, max-age=86400")
     return response
+
+
+def _etag_response(request: Request, payload: dict, *key_parts: str):
+    """Wrap a JSON payload with a weak ETag derived from the data's
+    refresh timestamp + query identity, honouring If-None-Match.
+
+    The catalogue only changes on refresh (every 6 h) or an admin
+    override — both bump `_last_updated` — so revalidation is a cheap
+    304 nearly always.
+    """
+    etag = 'W/"' + hashlib.md5("|".join(key_parts).encode()).hexdigest() + '"'
+    headers = {"ETag": etag, "Cache-Control": "public, max-age=300"}
+    if request.headers.get("if-none-match") == etag:
+        return Response(status_code=304, headers=headers)
+    return JSONResponse(content=payload, headers=headers)
 
 
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
@@ -172,10 +204,25 @@ if static_dir.exists():
 
 @app.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request):
+    # Server-render the default view's rows (frontier tier, default
+    # workload/sensitivity/city, sorted by AI Value) so crawlers and
+    # no-JS clients see real content; boot() replaces them client-side.
+    models = _get_scored(DEFAULT_WORKLOAD, DEFAULT_SENSITIVITY, DEFAULT_CITY)
+    initial = sorted(
+        (m for m in models if m["quality_index"] >= 35),
+        key=lambda m: m["ai_value_score"],
+        reverse=True,
+    )
     return templates.TemplateResponse("index.html", {
         "request": request,
         "last_updated": _last_updated,
+        "initial_models": initial,
     })
+
+
+@app.head("/")
+async def dashboard_head():
+    return HTMLResponse("")
 
 
 # ── JSON API ──────────────────────────────────────────────────────────────────
@@ -185,6 +232,11 @@ async def healthz():
     return {"ok": True}
 
 
+@app.head("/healthz")
+async def healthz_head():
+    return Response()
+
+
 @app.get("/robots.txt", response_class=PlainTextResponse)
 async def robots():
     return "User-agent: *\nAllow: /\nDisallow: /api/\n"
@@ -192,6 +244,7 @@ async def robots():
 
 @app.get("/api/models")
 async def get_models(
+    request: Request,
     category: Optional[str] = None,
     workload: Optional[str] = None,
     sensitivity: Optional[str] = None,
@@ -203,7 +256,7 @@ async def get_models(
     models = _get_scored(wl, sn, ct)
     if category and category != "all":
         models = [m for m in models if category in m["categories"]]
-    return {
+    payload = {
         "models": models,
         "last_updated": _last_updated,
         "total": len(models),
@@ -211,6 +264,7 @@ async def get_models(
         "sensitivity": sn,
         "city": ct,
     }
+    return _etag_response(request, payload, wl, sn, ct, category or "all", str(_data_version))
 
 
 @app.get("/api/history/{model_id}")
@@ -226,7 +280,7 @@ async def update_price(update: PriceUpdate, request: Request):
     if update.id not in {m["id"] for m in PROVIDERS}:
         raise HTTPException(status_code=404, detail="Model not found")
     await save_override(update.id, update.input_usd_per_1m, update.output_usd_per_1m, update.notes or "")
-    await _refresh_models()
+    await _refresh_models(fetch_live=False)
     return {"status": "ok", "id": update.id}
 
 
@@ -239,8 +293,8 @@ async def manual_refresh(request: Request):
 
 
 @app.get("/api/meta")
-async def meta():
-    return {
+async def meta(request: Request):
+    payload = {
         "categories": CATEGORIES,
         "provider_colors": PROVIDER_COLORS,
         "last_updated": _last_updated,
@@ -266,3 +320,4 @@ async def meta():
         "default_sensitivity": DEFAULT_SENSITIVITY,
         "default_city": DEFAULT_CITY,
     }
+    return _etag_response(request, payload, "meta", str(_data_version))

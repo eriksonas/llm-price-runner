@@ -5,6 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>LLM Price Runner</title>
   <meta name="description" content="Ranks ~200 LLM endpoints by AI Value — intelligence per dollar adjusted for the latency you'd see from your city. Refreshed every 6 hours." />
+  <meta property="og:title" content="LLM Price Runner — AI Value rankings" />
+  <meta property="og:description" content="Ranks ~200 LLM endpoints by intelligence per dollar, adjusted for the latency from your city. Refreshed every 6 hours." />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://models.agent-startup.com/" />
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚡</text></svg>" />
   <script src="/static/chart.umd.min.js"></script>
   <style>
@@ -238,7 +242,7 @@
     <div class="cat-tabs" id="frontier-tabs"></div>
     <div class="spacer"></div>
     <input class="search-input" type="text" placeholder="Search models…" id="search-input" oninput="filterModels()" />
-    <select class="sort-select" id="sort-select" onchange="renderTable()">
+    <select class="sort-select" id="sort-select" onchange="setSortFromSelect(this.value)">
       <option value="ai_value_score">AI Value ↓</option>
       <option value="intel_per_dollar">Intel per $ ↓</option>
       <option value="input_usd_per_1m">Input Price ↑</option>
@@ -266,7 +270,27 @@
         </tr>
       </thead>
       <tbody id="model-tbody">
+        {# Server-rendered default view (frontier tier, chat/interactive,
+           default city) — crawlers and no-JS clients see real rows, and
+           there's no "Loading…" flash. boot() re-renders client-side. #}
+        {% for m in initial_models %}
+        <tr>
+          <td><span style="font-weight:500">{{ m.provider }}</span></td>
+          <td>
+            <div class="model-name">{{ m.model }}</div>
+            <div class="model-id">{{ m.model_id }}</div>
+          </td>
+          <td class="price-cell"><span class="price-in">${{ '%.3f' % m.input_usd_per_1m }}</span></td>
+          <td class="price-cell"><span class="price-out">${{ '%.2f' % m.output_usd_per_1m }}</span></td>
+          <td class="hide-mobile ctx">{{ m.context_window_k }}k</td>
+          <td><span class="latency">~{{ m.display_latency_ms }}ms</span></td>
+          <td class="hide-lg">{{ '%.0f' % m.quality_index }}</td>
+          <td><span class="score-num">{{ '%.2f' % m.ai_value_score }}</span></td>
+          <td class="hide-mobile"></td>
+        </tr>
+        {% else %}
         <tr><td colspan="9" class="loading">Loading models…</td></tr>
+        {% endfor %}
       </tbody>
     </table>
   </div>
@@ -357,17 +381,73 @@ function cityLabel(id) {
   return c ? c.label : id;
 }
 
+async function fetchJson(url) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`HTTP ${r.status} from ${url}`);
+  return r.json();
+}
+
+// On fetch failure the server-rendered table stays visible — only the
+// nav shows the problem, and boot retries on a timer.
+let retryTimer = null;
+function scheduleRetry() {
+  document.getElementById('nav-updated').textContent = '⚠ Live data unavailable — retrying…';
+  if (retryTimer) return;
+  retryTimer = setTimeout(() => { retryTimer = null; boot(); }, 10000);
+}
+
+let defaultWorkload = 'chat', defaultSensitivity = 'interactive', defaultCity = 'vilnius';
+const SORT_KEYS = [
+  'ai_value_score','intel_per_dollar','input_usd_per_1m','output_usd_per_1m',
+  'blended_cost_usd_per_1m','display_latency_ms','quality_index','arena_elo',
+  'provider','model','context_window_k',
+];
+const ASC_SORT_KEYS = ['input_usd_per_1m','output_usd_per_1m','blended_cost_usd_per_1m','display_latency_ms','provider','model'];
+
+function applyUrlParams() {
+  const p = new URLSearchParams(location.search);
+  const pick = (key, valid, dflt) => valid.includes(p.get(key)) ? p.get(key) : dflt;
+  currentWorkload = pick('workload', workloads.map(w => w.id), defaultWorkload);
+  currentSensitivity = pick('sensitivity', sensitivities.map(s => s.id), defaultSensitivity);
+  currentCity = pick('city', cities.map(c => c.id), defaultCity);
+  activeCategory = pick('category', categories.map(c => c.id), 'all');
+  currentLicense = pick('license', LICENSE_TABS.map(t => t.id), 'all');
+  currentFrontier = pick('tier', FRONTIER_TIERS.map(t => t.id), 'frontier');
+  sortKey = pick('sort', SORT_KEYS, 'ai_value_score');
+  sortAsc = ASC_SORT_KEYS.includes(sortKey);
+  document.getElementById('sort-select').value = sortKey;
+  document.getElementById('search-input').value = p.get('q') || '';
+}
+
+function syncUrl() {
+  const p = new URLSearchParams();
+  if (currentWorkload !== defaultWorkload) p.set('workload', currentWorkload);
+  if (currentSensitivity !== defaultSensitivity) p.set('sensitivity', currentSensitivity);
+  if (currentCity !== defaultCity) p.set('city', currentCity);
+  if (activeCategory !== 'all') p.set('category', activeCategory);
+  if (currentLicense !== 'all') p.set('license', currentLicense);
+  if (currentFrontier !== 'frontier') p.set('tier', currentFrontier);
+  if (sortKey !== 'ai_value_score') p.set('sort', sortKey);
+  const q = document.getElementById('search-input').value.trim();
+  if (q) p.set('q', q);
+  const qs = p.toString();
+  history.replaceState(null, '', qs ? `?${qs}` : location.pathname);
+}
+
 async function boot() {
-  const meta = await fetch('/api/meta').then(r => r.json());
+  let meta;
+  try { meta = await fetchJson('/api/meta'); }
+  catch (e) { scheduleRetry(); return; }
   providerColors = meta.provider_colors;
   categories = meta.categories;
   workloads = meta.workloads;
   sensitivities = meta.sensitivities;
   cities = meta.cities || [];
   clusters = meta.clusters || [];
-  currentWorkload = meta.default_workload;
-  currentSensitivity = meta.default_sensitivity;
-  currentCity = meta.default_city || 'vilnius';
+  defaultWorkload = meta.default_workload;
+  defaultSensitivity = meta.default_sensitivity;
+  defaultCity = meta.default_city || 'vilnius';
+  applyUrlParams();
   currentCluster = cityClusterId(currentCity) || (clusters[0] && clusters[0].id) || null;
   document.getElementById('nav-count').textContent = `${meta.model_count} models`;
   document.getElementById('nav-providers').textContent = `${meta.provider_count} providers`;
@@ -382,7 +462,9 @@ async function boot() {
 
 async function reloadModels() {
   const url = `/api/models?workload=${currentWorkload}&sensitivity=${currentSensitivity}&city=${currentCity}`;
-  const data = await fetch(url).then(r => r.json());
+  let data;
+  try { data = await fetchJson(url); }
+  catch (e) { scheduleRetry(); return; }
   allModels = data.models;
   filteredModels = [...allModels];
   document.getElementById('nav-updated').textContent = `Updated: ${data.last_updated}`;
@@ -462,13 +544,24 @@ function filterModels() {
     const licOk = currentLicense === 'all' || (currentLicense === 'open' ? isOpenWeight(m) : !isOpenWeight(m));
     return catOk && searchOk && licOk;
   });
+  syncUrl();
   renderTable();
 }
 
 function setSort(key) {
   if (sortKey === key) { sortAsc = !sortAsc; }
-  else { sortKey = key; sortAsc = ['input_usd_per_1m','output_usd_per_1m','blended_cost_usd_per_1m','display_latency_ms'].includes(key); }
+  else { sortKey = key; sortAsc = ASC_SORT_KEYS.includes(key); }
+  // Mirror into the dropdown when the key exists there; column-only keys
+  // (provider, model, ctx) leave it blank.
   document.getElementById('sort-select').value = sortKey;
+  syncUrl();
+  renderTable();
+}
+
+function setSortFromSelect(key) {
+  sortKey = key;
+  sortAsc = ASC_SORT_KEYS.includes(key);
+  syncUrl();
   renderTable();
 }
 
@@ -559,8 +652,6 @@ function qiHtml(m) {
 }
 
 function renderTable() {
-  const key = document.getElementById('sort-select').value;
-  if (key !== sortKey) { sortKey = key; }
   const models = sortModels(filteredModels);
   const tbody = document.getElementById('model-tbody');
   if (!models.length) { tbody.innerHTML = '<tr><td colspan="9" class="loading">No models match.</td></tr>'; return; }
@@ -691,9 +782,15 @@ async function openModal(modelId) {
 }
 
 async function loadHistory(modelId) {
-  const data = await fetch(`/api/history/${modelId}`).then(r => r.json());
   const canvas = document.getElementById(`chart-${modelId}`);
   if (!canvas) return;
+  let data;
+  try { data = await fetchJson(`/api/history/${encodeURIComponent(modelId)}`); }
+  catch (e) {
+    canvas.insertAdjacentHTML('afterend', '<p style="color:var(--muted);font-size:12px">Price history unavailable.</p>');
+    canvas.style.display = 'none';
+    return;
+  }
   if (!data.history.length) { canvas.style.display='none'; canvas.insertAdjacentHTML('afterend','<p style="color:var(--muted);font-size:12px">No history yet — refreshes every 6h.</p>'); return; }
   const labels = data.history.map(h => h.recorded_at.slice(0,10)).reverse();
   new Chart(canvas, {
